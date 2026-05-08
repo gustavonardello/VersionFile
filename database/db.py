@@ -15,16 +15,44 @@ def get_connection() -> sqlite3.Connection:
 
 def _migrar(conn):
     """Aplica migrações incrementais sem recriar o banco."""
-    colunas = [r[1] for r in conn.execute("PRAGMA table_info(versoes)").fetchall()]
-    if "tipo" not in colunas:
+    colunas_versoes = [r[1] for r in conn.execute("PRAGMA table_info(versoes)").fetchall()]
+    if "tipo" not in colunas_versoes:
         conn.execute(
             "ALTER TABLE versoes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'Criação'"
         )
-        # Versão 1 de cada regra já é Criação — as demais ficam como Melhoria por padrão
-        conn.execute(
-            "UPDATE versoes SET tipo = 'Melhoria' WHERE numero > 1"
-        )
+        conn.execute("UPDATE versoes SET tipo = 'Melhoria' WHERE numero > 1")
         conn.commit()
+
+    # Migração: adicionar coluna descricao e tipo 'Regra' ao CHECK de projetos
+    colunas_projetos = [r[1] for r in conn.execute("PRAGMA table_info(projetos)").fetchall()]
+    create_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='projetos'"
+    ).fetchone()
+    precisa_migrar = (
+        "descricao" not in colunas_projetos
+        or (create_sql and "'Regra'" not in create_sql[0])
+    )
+    if precisa_migrar:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("""
+            CREATE TABLE projetos_new (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                nome        TEXT NOT NULL,
+                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra')),
+                descricao   TEXT,
+                criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                UNIQUE(cliente_id, nome)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO projetos_new (id, cliente_id, nome, tipo, criado_em)
+            SELECT id, cliente_id, nome, tipo, criado_em FROM projetos
+        """)
+        conn.execute("DROP TABLE projetos")
+        conn.execute("ALTER TABLE projetos_new RENAME TO projetos")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def initialize_db():
@@ -40,7 +68,8 @@ def initialize_db():
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
                 nome        TEXT NOT NULL,
-                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto')),
+                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra')),
+                descricao   TEXT,
                 criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                 UNIQUE(cliente_id, nome)
             );

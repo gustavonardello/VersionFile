@@ -25,53 +25,41 @@ class DialogCliente(QDialog):
 
 
 class DialogProjeto(QDialog):
-    def __init__(self, parent=None, nome_atual: str = "", tipo_atual: str = "DID"):
+    _PLACEHOLDERS = {
+        "DID":     "ex: 2425",
+        "Projeto": "ex: RH, Folha de Pagamento",
+        "Regra":   "ex: Sistema, Módulo",
+    }
+
+    def __init__(self, parent=None, nome_atual: str = "", tipo_atual: str = "DID", descricao_atual: str = ""):
         super().__init__(parent)
-        self.setWindowTitle("Novo projeto / DID")
+        self.setWindowTitle("Novo projeto")
         self.setMinimumWidth(320)
 
         layout = QFormLayout(self)
         layout.setSpacing(10)
 
         self.campo_tipo = QComboBox()
-        self.campo_tipo.addItems(["DID", "Projeto"])
+        self.campo_tipo.addItems(["DID", "Projeto", "Regra"])
         self.campo_tipo.setCurrentText(tipo_atual)
         layout.addRow("Tipo:", self.campo_tipo)
 
-        # Campo número da DID (só para DID)
-        self.campo_numero = QLineEdit()
-        self.campo_numero.setPlaceholderText("ex: 2425")
-        self.label_numero = self.findChild(type(None))  # placeholder
-        self._label_numero_row = QLabel("Número da DID:")
-        layout.addRow(self._label_numero_row, self.campo_numero)
-
-        # Campo nome do projeto (só para Projeto)
         self.campo_nome = QLineEdit(nome_atual)
-        self.campo_nome.setPlaceholderText("ex: RH, Folha de Pagamento")
         self._label_nome_row = QLabel("Nome:")
         layout.addRow(self._label_nome_row, self.campo_nome)
 
-        # Preview do nome final
-        self.label_preview = QLabel("")
-        self.label_preview.setStyleSheet("color: #858585; font-size: 11px;")
-        layout.addRow("", self.label_preview)
+        self.campo_descricao = QLineEdit(descricao_atual)
+        self.campo_descricao.setPlaceholderText("Descrição opcional")
+        self._label_descricao_row = QLabel("Descrição:")
+        layout.addRow(self._label_descricao_row, self.campo_descricao)
 
         botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject)
         layout.addRow(botoes)
 
-        # Conecta atualizações
         self.campo_tipo.currentTextChanged.connect(self._atualizar_campos)
-        self.campo_numero.textChanged.connect(self._atualizar_preview)
-        self.campo_nome.textChanged.connect(self._atualizar_preview)
-
-        # Estado inicial
         self._atualizar_campos(tipo_atual)
-
-        # Se editando um DID existente, extrai o número
-        if nome_atual.upper().startswith("DID "):
-            self.campo_numero.setText(nome_atual[4:].strip())
 
         self.setStyleSheet("""
             QDialog { background-color: #1E1E1E; color: #D4D4D4; }
@@ -88,30 +76,22 @@ class DialogProjeto(QDialog):
         """)
 
     def _atualizar_campos(self, tipo: str):
-        is_did = (tipo == "DID")
-        self._label_numero_row.setVisible(is_did)
-        self.campo_numero.setVisible(is_did)
-        self._label_nome_row.setVisible(not is_did)
-        self.campo_nome.setVisible(not is_did)
-        self._atualizar_preview()
-
-    def _atualizar_preview(self):
-        nome = self.nome
-        if nome:
-            self.label_preview.setText(f'Será salvo como: "{nome}"')
-        else:
-            self.label_preview.setText("")
+        self.campo_nome.setPlaceholderText(self._PLACEHOLDERS.get(tipo, ""))
+        is_regra = (tipo == "Regra")
+        self._label_descricao_row.setVisible(is_regra)
+        self.campo_descricao.setVisible(is_regra)
 
     @property
     def nome(self) -> str:
-        if self.campo_tipo.currentText() == "DID":
-            num = self.campo_numero.text().strip()
-            return f"DID {num}" if num else ""
         return self.campo_nome.text().strip()
 
     @property
     def tipo(self) -> str:
         return self.campo_tipo.currentText()
+
+    @property
+    def descricao(self) -> str:
+        return self.campo_descricao.text().strip()
 
 
 class DialogRegra(QDialog):
