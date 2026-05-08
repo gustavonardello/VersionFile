@@ -1,10 +1,11 @@
 from PyQt6.QtWidgets import QMainWindow, QSplitter, QWidget, QVBoxLayout, QMenuBar
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QAction
+from PyQt6.QtGui import QFont, QAction, QIcon
 from ui.tree_panel import TreePanel
 from ui.editor_panel import EditorPanel
 from ui.import_dialog import ImportDialog
 from ui.export_dialog import ExportDialog
+from core.paths import base_path
 
 
 class MainWindow(QMainWindow):
@@ -13,6 +14,10 @@ class MainWindow(QMainWindow):
         self.conn = conn
         self.setWindowTitle("VersionFile — Gerenciador de Regras LSP")
         self.resize(1200, 750)
+
+        icone = base_path() / "icone.ico"
+        if icone.exists():
+            self.setWindowIcon(QIcon(str(icone)))
 
         self._aplicar_estilo()
         self._criar_menu()

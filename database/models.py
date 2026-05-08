@@ -122,6 +122,14 @@ def deletar_regra(conn, regra_id: int):
     conn.commit()
 
 
+def atualizar_regra(conn, regra_id: int, numero: str, descricao: str):
+    conn.execute(
+        "UPDATE regras SET numero = ?, descricao = ? WHERE id = ?",
+        (numero, descricao, regra_id),
+    )
+    conn.commit()
+
+
 # --- CRUD: Versões ---
 
 def listar_versoes(conn, regra_id: int) -> list[Versao]:

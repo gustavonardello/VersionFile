@@ -3,9 +3,10 @@ from PyQt6.QtWidgets import (
     QMenu, QMessageBox, QLineEdit, QCheckBox, QLabel,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QColor
+from PyQt6.QtGui import QAction, QColor, QPixmap
 import database.models as M
 from ui.dialogs import DialogCliente, DialogProjeto, DialogRegra
+from core.paths import base_path
 
 NODE_CLIENTE = "cliente"
 NODE_PROJETO = "projeto"
@@ -27,6 +28,16 @@ class TreePanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
+
+        # Logo
+        logo_path = base_path() / "logo.png"
+        if logo_path.exists():
+            lbl_logo = QLabel()
+            pixmap = QPixmap(str(logo_path))
+            lbl_logo.setPixmap(pixmap.scaledToWidth(200, Qt.TransformationMode.SmoothTransformation))
+            lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_logo.setContentsMargins(8, 8, 8, 4)
+            layout.addWidget(lbl_logo)
 
         # Barra de busca
         self.campo_busca = QLineEdit()
@@ -50,7 +61,7 @@ class TreePanel(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._context_menu)
-        self.tree.itemClicked.connect(self._on_click)
+        self.tree.itemSelectionChanged.connect(self._on_selecao)
         layout.addWidget(self.tree)
 
         # Debounce: só filtra 300ms após parar de digitar
@@ -63,9 +74,46 @@ class TreePanel(QWidget):
 
         self.carregar()
 
-    def carregar(self):
+    def _estado_expandido(self) -> dict:
+        """Salva quais cliente_id e projeto_id estão expandidos."""
+        estado = {"clientes": set(), "projetos": set()}
+        for i in range(self.tree.topLevelItemCount()):
+            item_c = self.tree.topLevelItem(i)
+            d = self._dados(item_c)
+            if item_c.isExpanded():
+                estado["clientes"].add(d["id"])
+            for j in range(item_c.childCount()):
+                item_p = item_c.child(j)
+                dp = self._dados(item_p)
+                if item_p.isExpanded():
+                    estado["projetos"].add(dp["id"])
+        return estado
+
+    def _restaurar_expandido(self, estado: dict, ids_novos_clientes: set, ids_novos_projetos: set):
+        """Restaura o estado expandido; novos itens ficam expandidos por padrão."""
+        for i in range(self.tree.topLevelItemCount()):
+            item_c = self.tree.topLevelItem(i)
+            d = self._dados(item_c)
+            cid = d["id"]
+            # Expande se estava expandido antes ou é novo
+            expandir_c = (cid in estado["clientes"]) or (cid in ids_novos_clientes)
+            item_c.setExpanded(expandir_c)
+            for j in range(item_c.childCount()):
+                item_p = item_c.child(j)
+                dp = self._dados(item_p)
+                pid = dp["id"]
+                expandir_p = (pid in estado["projetos"]) or (pid in ids_novos_projetos)
+                item_p.setExpanded(expandir_p)
+
+    def carregar(self, ids_novos_clientes: set = None, ids_novos_projetos: set = None):
+        estado = self._estado_expandido()
+        # Primeira carga: expande tudo
+        primeira_vez = self.tree.topLevelItemCount() == 0
+
+        self.tree.blockSignals(True)
         self.tree.clear()
         self.label_resultado.setText("")
+
         for cliente in M.listar_clientes(self.conn):
             item_c = _item(cliente.nome, NODE_CLIENTE, cliente.id)
             for projeto in M.listar_projetos(self.conn, cliente.id):
@@ -77,7 +125,17 @@ class TreePanel(QWidget):
                     item_p.addChild(item_r)
                 item_c.addChild(item_p)
             self.tree.addTopLevelItem(item_c)
-        self.tree.expandAll()
+
+        if primeira_vez:
+            self.tree.expandAll()
+        else:
+            self._restaurar_expandido(
+                estado,
+                ids_novos_clientes or set(),
+                ids_novos_projetos or set(),
+            )
+
+        self.tree.blockSignals(False)
 
     def _aplicar_filtro(self):
         termo = self.campo_busca.text().strip().lower()
@@ -146,6 +204,14 @@ class TreePanel(QWidget):
     def _dados(self, item: QTreeWidgetItem) -> dict:
         return item.data(0, Qt.ItemDataRole.UserRole) or {}
 
+    def _on_selecao(self):
+        itens = self.tree.selectedItems()
+        if not itens:
+            return
+        d = self._dados(itens[0])
+        if d.get("tipo") == NODE_REGRA:
+            self.regra_selecionada.emit(d["id"])
+
     def _on_click(self, item: QTreeWidgetItem, _col):
         d = self._dados(item)
         if d.get("tipo") == NODE_REGRA:
@@ -185,6 +251,9 @@ class TreePanel(QWidget):
                 )
 
             elif tipo == NODE_REGRA:
+                menu.addAction("Editar regra").triggered.connect(
+                    lambda: self._editar_regra(d["id"])
+                )
                 menu.addAction("Excluir regra").triggered.connect(
                     lambda: self._excluir_regra(d["id"])
                 )
@@ -200,8 +269,8 @@ class TreePanel(QWidget):
         dlg = DialogCliente(self)
         if dlg.exec() and dlg.nome:
             try:
-                M.criar_cliente(self.conn, dlg.nome)
-                self.carregar()
+                c = M.criar_cliente(self.conn, dlg.nome)
+                self.carregar(ids_novos_clientes={c.id})
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
 
@@ -221,8 +290,8 @@ class TreePanel(QWidget):
         dlg = DialogProjeto(self)
         if dlg.exec() and dlg.nome:
             try:
-                M.criar_projeto(self.conn, cliente_id, dlg.nome, dlg.tipo)
-                self.carregar()
+                p = M.criar_projeto(self.conn, cliente_id, dlg.nome, dlg.tipo)
+                self.carregar(ids_novos_clientes={cliente_id}, ids_novos_projetos={p.id})
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
 
@@ -244,7 +313,35 @@ class TreePanel(QWidget):
             try:
                 regra = M.criar_regra(self.conn, projeto_id, dlg.numero, dlg.descricao)
                 M.criar_versao(self.conn, regra.id)
-                self.carregar()
+                # Mantém o projeto pai expandido
+                proj = self.conn.execute(
+                    "SELECT cliente_id FROM projetos WHERE id = ?", (projeto_id,)
+                ).fetchone()
+                self.carregar(
+                    ids_novos_clientes={proj["cliente_id"]} if proj else set(),
+                    ids_novos_projetos={projeto_id},
+                )
+            except Exception as e:
+                QMessageBox.warning(self, "Erro", str(e))
+
+    def _editar_regra(self, regra_id):
+        regra = self.conn.execute(
+            "SELECT numero, descricao, projeto_id FROM regras WHERE id = ?", (regra_id,)
+        ).fetchone()
+        if not regra:
+            return
+        dlg = DialogRegra(self, numero_atual=regra["numero"], descricao_atual=regra["descricao"] or "")
+        dlg.setWindowTitle("Editar Regra")
+        if dlg.exec() and dlg.numero:
+            try:
+                M.atualizar_regra(self.conn, regra_id, dlg.numero, dlg.descricao)
+                proj = self.conn.execute(
+                    "SELECT cliente_id FROM projetos WHERE id = ?", (regra["projeto_id"],)
+                ).fetchone()
+                self.carregar(
+                    ids_novos_clientes={proj["cliente_id"]} if proj else set(),
+                    ids_novos_projetos={regra["projeto_id"]},
+                )
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
 
