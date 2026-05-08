@@ -14,6 +14,7 @@ from core.highlighter import LSPLexer, load_theme, list_themes, save_active_them
 from core.version_manager import diff_versoes, sugerir_tipo_para_regra
 from ui.dialogs import DialogVersao
 from ui.diff_viewer import DiffViewer
+from ui.version_history import VersionHistory
 
 STATUS_CORES = {
     "Em desenvolvimento": "#569CD6",
@@ -147,6 +148,11 @@ class EditorPanel(QWidget):
         btn_importar = QPushButton("Importar arquivo")
         btn_importar.clicked.connect(self._importar)
         pv_layout.addWidget(btn_importar)
+
+        btn_historico = QPushButton("Ver histórico")
+        btn_historico.setToolTip("Visualiza todas as versões com opção de carregar ou excluir")
+        btn_historico.clicked.connect(self._abrir_historico)
+        pv_layout.addWidget(btn_historico)
 
         btn_diff = QPushButton("Comparar versões")
         btn_diff.setToolTip("Abre o diff visual lado a lado entre duas versões")
@@ -328,13 +334,14 @@ class EditorPanel(QWidget):
     def _nova_versao(self):
         if not self._regra_id:
             return
-        conteudo_atual = self._versao_atual.conteudo if self._versao_atual else ""
         versoes = M.listar_versoes(self.conn, self._regra_id)
         proximo_numero = (versoes[0].numero + 1) if versoes else 1
-        tipo_sugerido = sugerir_tipo_para_regra(self.conn, self._regra_id, conteudo_atual)
+        # Usa conteúdo atual apenas para sugerir o tipo — o editor começa em branco
+        conteudo_ref = self._versao_atual.conteudo if self._versao_atual else ""
+        tipo_sugerido = sugerir_tipo_para_regra(self.conn, self._regra_id, conteudo_ref)
         dlg = DialogVersao(self, tipo_sugerido=tipo_sugerido, numero_versao=proximo_numero)
         if dlg.exec():
-            M.criar_versao(self.conn, self._regra_id, conteudo_atual, dlg.notas, dlg.tipo)
+            M.criar_versao(self.conn, self._regra_id, "", dlg.notas, dlg.tipo)
             self._recarregar_versoes()
 
     def _marcar_atual(self):
@@ -393,6 +400,26 @@ class EditorPanel(QWidget):
             if restantes:
                 M.definir_versao_atual(self.conn, self._regra_id, restantes[0].id)
         self._recarregar_versoes()
+
+    def _abrir_historico(self):
+        if not self._regra_id:
+            return
+        label = self.label_regra.text()
+        dlg = VersionHistory(self.conn, self._regra_id, regra_label=label, parent=self)
+        dlg.versao_carregada.connect(self._carregar_versao_por_id)
+        dlg.exec()
+        # Recarrega combo caso versões tenham sido excluídas no histórico
+        self._recarregar_versoes()
+
+    def _carregar_versao_por_id(self, versao_id: int):
+        versoes = M.listar_versoes(self.conn, self._regra_id)
+        for i, v in enumerate(versoes):
+            if v.id == versao_id:
+                self.combo_versoes.blockSignals(True)
+                self.combo_versoes.setCurrentIndex(i)
+                self.combo_versoes.blockSignals(False)
+                self._carregar_versao(i)
+                break
 
     def _abrir_diff(self):
         if not self._regra_id:
