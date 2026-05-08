@@ -68,6 +68,10 @@ class MainWindow(QMainWindow):
         act_sair.triggered.connect(self.close)
         menu_arquivo.addAction(act_sair)
 
+    def closeEvent(self, event):
+        self.editor_panel.salvar_se_pendente()
+        super().closeEvent(event)
+
     def _abrir_importacao(self):
         dlg = ImportDialog(self.conn, parent=self)
         dlg.importacao_concluida.connect(self.tree_panel.carregar)

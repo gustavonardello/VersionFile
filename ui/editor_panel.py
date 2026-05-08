@@ -5,7 +5,8 @@ from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QTextEdit, QSplitter,
     QMessageBox, QFileDialog, QFrame,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer, QObject, QEvent
+from PyQt6.QtWidgets import QApplication
 from PyQt6.Qsci import QsciScintilla
 from PyQt6.QtGui import QColor, QFont
 
@@ -35,9 +36,17 @@ class EditorPanel(QWidget):
         self._regra_id = None
         self._versao_atual = None
         self._lexer = None
+        self._carregando = False
+
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.setInterval(1000)
+        self._autosave_timer.timeout.connect(self._salvar_tudo)
+
+        QApplication.instance().focusChanged.connect(self._on_focus_changed)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(4, 4, 0, 4)
 
         # Barra superior
         barra = QHBoxLayout()
@@ -66,13 +75,14 @@ class EditorPanel(QWidget):
         # Editor
         self.editor = QsciScintilla()
         self._setup_editor()
+        self.editor.textChanged.connect(self._agendar_autosave)
         splitter.addWidget(self.editor)
 
         # Painel direito (versões + notas)
         painel_versoes = QWidget()
         painel_versoes.setObjectName("painelVersoes")
         pv_layout = QVBoxLayout(painel_versoes)
-        pv_layout.setContentsMargins(8, 8, 8, 8)
+        pv_layout.setContentsMargins(8, 8, 0, 8)
         pv_layout.setSpacing(6)
 
         # --- Seção: Versão ---
@@ -98,6 +108,7 @@ class EditorPanel(QWidget):
 
         self.combo_status = QComboBox()
         self.combo_status.addItems(list(STATUS_CORES.keys()))
+        self.combo_status.currentTextChanged.connect(self._agendar_autosave)
         pv_layout.addWidget(self.combo_status)
 
         pv_layout.addSpacing(2)
@@ -110,6 +121,7 @@ class EditorPanel(QWidget):
         self.campo_notas = QTextEdit()
         self.campo_notas.setMaximumHeight(90)
         self.campo_notas.setPlaceholderText("Descreva as alterações desta versão...")
+        self.campo_notas.textChanged.connect(self._agendar_autosave)
         pv_layout.addWidget(self.campo_notas)
 
         btn_salvar_tudo = QPushButton("Salvar  Ctrl+S")
@@ -235,7 +247,7 @@ class EditorPanel(QWidget):
         splitter.addWidget(painel_versoes)
         splitter.setStretchFactor(0, 1)
 
-        layout.addWidget(splitter)
+        layout.addWidget(splitter, 1)
 
         # Barra inferior
         barra_inf = QHBoxLayout()
@@ -265,6 +277,33 @@ class EditorPanel(QWidget):
 
         self.editor.setFont(QFont("Consolas", 10))
 
+        self.editor.setStyleSheet("""
+            QScrollBar:vertical {
+                background: #252526;
+                width: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical {
+                background: #555;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical { height: 0px; }
+            QScrollBar:horizontal {
+                background: #252526;
+                height: 10px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #555;
+                border-radius: 4px;
+                min-width: 20px;
+            }
+            QScrollBar::add-line:horizontal,
+            QScrollBar::sub-line:horizontal { width: 0px; }
+        """)
+
     def _trocar_tema(self, nome: str):
         if self._lexer:
             self._lexer.apply_theme(nome)
@@ -275,7 +314,14 @@ class EditorPanel(QWidget):
             self.editor.setSelectionBackgroundColor(QColor(t["selection"]))
             save_active_theme(nome)
 
+    def salvar_se_pendente(self):
+        """Salva imediatamente se houver um autosave pendente ou versão aberta."""
+        if self._autosave_timer.isActive():
+            self._autosave_timer.stop()
+            self._salvar_tudo()
+
     def abrir_regra(self, regra_id: int):
+        self.salvar_se_pendente()
         self._regra_id = regra_id
         regra = self.conn.execute(
             "SELECT r.numero, r.descricao, p.nome as proj, c.nome as cli "
@@ -307,16 +353,30 @@ class EditorPanel(QWidget):
             self.combo_versoes.setCurrentIndex(idx)
             self._carregar_versao(idx)
 
+    def _on_focus_changed(self, old, new):
+        """Salva imediatamente quando o foco sai do editor ou das notas."""
+        saiu_do_editor = old in (self.editor, self.campo_notas, self.combo_status)
+        if saiu_do_editor and not self._carregando and self._versao_atual:
+            self._autosave_timer.stop()
+            self._salvar_tudo()
+
+    def _agendar_autosave(self):
+        if not self._carregando and self._versao_atual:
+            self._autosave_timer.start()
+
     def _carregar_versao(self, index: int):
         versao = self.combo_versoes.itemData(index)
         if not versao:
             return
+        self._carregando = True
+        self._autosave_timer.stop()
         self._versao_atual = versao
         self.editor.setText(versao.conteudo)
         self.combo_status.setCurrentText(versao.status)
         self.campo_notas.setPlainText(versao.notas or "")
         self.label_status.setText(_badge(versao.status))
         self.label_info.setText(f"v{versao.numero}  |  {versao.criado_em}")
+        self._carregando = False
 
     def _salvar_tudo(self):
         if not self._versao_atual:
@@ -328,8 +388,9 @@ class EditorPanel(QWidget):
             self.combo_status.currentText(),
             self.campo_notas.toPlainText(),
         )
+        num = self._versao_atual.numero
         self._recarregar_versoes()
-        self.label_info.setText(f"v{self._versao_atual.numero}  |  Salvo")
+        self.label_info.setText(f"v{num}  |  Salvo automaticamente")
 
     def _nova_versao(self):
         if not self._regra_id:

@@ -14,7 +14,8 @@ class Projeto:
     id: Optional[int]
     cliente_id: int
     nome: str
-    tipo: str  # 'DID' ou 'Projeto'
+    tipo: str  # 'DID', 'Projeto' ou 'Regra'
+    descricao: str = ""
     criado_em: str = ""
 
 
@@ -46,7 +47,7 @@ class Versao:
 # --- CRUD: Clientes ---
 
 def listar_clientes(conn) -> list[Cliente]:
-    rows = conn.execute("SELECT * FROM clientes ORDER BY nome").fetchall()
+    rows = conn.execute("SELECT * FROM clientes ORDER BY nome COLLATE NOCASE").fetchall()
     return [Cliente(**dict(r)) for r in rows]
 
 
@@ -73,15 +74,15 @@ def renomear_cliente(conn, cliente_id: int, novo_nome: str):
 
 def listar_projetos(conn, cliente_id: int) -> list[Projeto]:
     rows = conn.execute(
-        "SELECT * FROM projetos WHERE cliente_id = ? ORDER BY nome", (cliente_id,)
+        "SELECT * FROM projetos WHERE cliente_id = ? ORDER BY nome COLLATE NOCASE", (cliente_id,)
     ).fetchall()
     return [Projeto(**dict(r)) for r in rows]
 
 
-def criar_projeto(conn, cliente_id: int, nome: str, tipo: str) -> Projeto:
+def criar_projeto(conn, cliente_id: int, nome: str, tipo: str, descricao: str = "") -> Projeto:
     cur = conn.execute(
-        "INSERT INTO projetos (cliente_id, nome, tipo) VALUES (?, ?, ?) RETURNING *",
-        (cliente_id, nome, tipo),
+        "INSERT INTO projetos (cliente_id, nome, tipo, descricao) VALUES (?, ?, ?, ?) RETURNING *",
+        (cliente_id, nome, tipo, descricao),
     )
     row = cur.fetchone()
     conn.commit()
@@ -93,8 +94,11 @@ def deletar_projeto(conn, projeto_id: int):
     conn.commit()
 
 
-def renomear_projeto(conn, projeto_id: int, novo_nome: str):
-    conn.execute("UPDATE projetos SET nome = ? WHERE id = ?", (novo_nome, projeto_id))
+def atualizar_projeto(conn, projeto_id: int, novo_nome: str, tipo: str, descricao: str = ""):
+    conn.execute(
+        "UPDATE projetos SET nome = ?, tipo = ?, descricao = ? WHERE id = ?",
+        (novo_nome, tipo, descricao, projeto_id),
+    )
     conn.commit()
 
 
@@ -102,7 +106,7 @@ def renomear_projeto(conn, projeto_id: int, novo_nome: str):
 
 def listar_regras(conn, projeto_id: int) -> list[Regra]:
     rows = conn.execute(
-        "SELECT * FROM regras WHERE projeto_id = ? ORDER BY numero", (projeto_id,)
+        "SELECT * FROM regras WHERE projeto_id = ? ORDER BY numero COLLATE NOCASE", (projeto_id,)
     ).fetchall()
     return [Regra(**dict(r)) for r in rows]
 

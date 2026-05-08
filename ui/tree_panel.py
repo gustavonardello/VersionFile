@@ -229,7 +229,7 @@ class TreePanel(QWidget):
             tipo = d.get("tipo")
 
             if tipo == NODE_CLIENTE:
-                menu.addAction("Novo projeto / DID").triggered.connect(
+                menu.addAction("Novo projeto").triggered.connect(
                     lambda: self._novo_projeto(d["id"])
                 )
                 menu.addAction("Renomear cliente").triggered.connect(
@@ -290,15 +290,26 @@ class TreePanel(QWidget):
         dlg = DialogProjeto(self)
         if dlg.exec() and dlg.nome:
             try:
-                p = M.criar_projeto(self.conn, cliente_id, dlg.nome, dlg.tipo)
+                p = M.criar_projeto(self.conn, cliente_id, dlg.nome, dlg.tipo, dlg.descricao)
                 self.carregar(ids_novos_clientes={cliente_id}, ids_novos_projetos={p.id})
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
 
     def _renomear_projeto(self, projeto_id, _item):
-        dlg = DialogProjeto(self)
+        proj = self.conn.execute(
+            "SELECT nome, tipo, descricao FROM projetos WHERE id = ?", (projeto_id,)
+        ).fetchone()
+        if not proj:
+            return
+        dlg = DialogProjeto(
+            self,
+            nome_atual=proj["nome"],
+            tipo_atual=proj["tipo"],
+            descricao_atual=proj["descricao"] or "",
+        )
+        dlg.setWindowTitle("Editar projeto")
         if dlg.exec() and dlg.nome:
-            M.renomear_projeto(self.conn, projeto_id, dlg.nome)
+            M.atualizar_projeto(self.conn, projeto_id, dlg.nome, dlg.tipo, dlg.descricao)
             self.carregar()
 
     def _excluir_projeto(self, projeto_id):
