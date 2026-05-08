@@ -49,7 +49,8 @@ class EditorPanel(QWidget):
         self.combo_tema = QComboBox()
         self.combo_tema.addItems(list_themes())
         # Seleciona o tema persistido sem disparar o sinal
-        _themes_json = Path(__file__).parent.parent / "config" / "themes.json"
+        from core.paths import data_path
+        _themes_json = data_path() / "config" / "themes.json"
         _tema_ativo = json.loads(_themes_json.read_text(encoding="utf-8"))["active_theme"]
         _idx = self.combo_tema.findText(_tema_ativo)
         if _idx >= 0:

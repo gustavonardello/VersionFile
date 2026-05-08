@@ -2,8 +2,9 @@ import json
 from pathlib import Path
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
 from PyQt6.QtGui import QColor, QFont
+from core.paths import data_path
 
-THEMES_PATH = Path(__file__).parent.parent / "config" / "themes.json"
+THEMES_PATH = data_path() / "config" / "themes.json"
 
 # Estilos (índices QScintilla)
 STYLE_DEFAULT    = 0
