@@ -30,13 +30,25 @@ def _inferir_tipo(nome: str) -> str:
     return "DID" if "did" in nome.lower() else "Projeto"
 
 
+def _ler_arquivo(caminho: Path) -> str:
+    """Lê um arquivo tentando UTF-8 primeiro, depois latin-1 como fallback."""
+    try:
+        return caminho.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return caminho.read_text(encoding="latin-1")
+
+
 def escanear_pasta(raiz: Path) -> list[ItemCliente]:
     """
-    Escaneia estrutura: raiz / cliente / projeto / arquivo.txt
+    Escaneia estrutura de pastas de forma flexível:
+      - 3 níveis: raiz / cliente / projeto / arquivo
+      - 2 níveis: raiz / projeto / arquivo  (cliente = nome da pasta raiz)
+      - 1 nível:  raiz / arquivo            (cliente e projeto = nome da pasta raiz)
     Retorna lista de ItemCliente com a hierarquia encontrada.
     """
     clientes: list[ItemCliente] = []
 
+    # Tenta estrutura de 3 níveis (padrão)
     for pasta_cliente in sorted(raiz.iterdir()):
         if not pasta_cliente.is_dir():
             continue
@@ -65,7 +77,46 @@ def escanear_pasta(raiz: Path) -> list[ItemCliente]:
         if cliente.projetos:
             clientes.append(cliente)
 
-    return clientes
+    if clientes:
+        return clientes
+
+    # Fallback: estrutura de 2 níveis (raiz / projeto / arquivo)
+    cliente_fallback = ItemCliente(nome=raiz.name)
+    for pasta_proj in sorted(raiz.iterdir()):
+        if not pasta_proj.is_dir():
+            continue
+
+        projeto = ItemProjeto(
+            nome=pasta_proj.name,
+            tipo=_inferir_tipo(pasta_proj.name),
+        )
+
+        for arquivo in sorted(pasta_proj.iterdir()):
+            if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES_VALIDAS:
+                projeto.regras.append(ArquivoRegra(
+                    caminho=arquivo,
+                    numero=arquivo.stem,
+                ))
+
+        if projeto.regras:
+            cliente_fallback.projetos.append(projeto)
+
+    if cliente_fallback.projetos:
+        return [cliente_fallback]
+
+    # Fallback: estrutura de 1 nível (raiz / arquivo)
+    projeto_fallback = ItemProjeto(nome=raiz.name, tipo=_inferir_tipo(raiz.name))
+    for arquivo in sorted(raiz.iterdir()):
+        if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES_VALIDAS:
+            projeto_fallback.regras.append(ArquivoRegra(
+                caminho=arquivo,
+                numero=arquivo.stem,
+            ))
+
+    if projeto_fallback.regras:
+        return [ItemCliente(nome=raiz.name, projetos=[projeto_fallback])]
+
+    return []
 
 
 def importar_para_banco(conn, clientes: list[ItemCliente], notas: str = "Importação inicial") -> dict:
@@ -111,7 +162,7 @@ def importar_para_banco(conn, clientes: list[ItemCliente], notas: str = "Importa
                     continue
 
                 regra = M.criar_regra(conn, projeto_id, arq.numero, arq.descricao)
-                conteudo = arq.caminho.read_text(encoding="utf-8", errors="replace")
+                conteudo = _ler_arquivo(arq.caminho)
                 M.criar_versao(conn, regra.id, conteudo, notas)
                 contagem["regras"] += 1
 
