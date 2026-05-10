@@ -1,69 +1,21 @@
 {
   "themes": {
-    "Senior (padrão)": {
-      "background": "#FFFFFF",
-      "foreground": "#000000",
-      "keyword": "#000000",
-      "keyword2": "#800080",
-      "type": "#000000",
-      "number": "#098658",
-      "string": "#5555ff",
-      "comment": "#008000",
-      "operator": "#000000",
-      "identifier": "#000000",
-      "caret_line": "#EEF5FF",
-      "margin_background": "#F3F3F3",
-      "margin_foreground": "#999999",
-      "selection": "#ADD6FF",
-      "ui": {
-        "app_background":     "#F0F0F0",
-        "panel_background":   "#FAFAFA",
-        "tree_background":    "#FFFFFF",
-        "menubar_background": "#E8E8E8",
-        "text":               "#1E1E1E",
-        "text_muted":         "#666666",
-        "border":             "#CCCCCC",
-        "item_selected":      "#ADD6FF",
-        "item_hover":         "#E5EEF8",
-        "input_background":   "#FFFFFF",
-        "button_primary":     "#0E639C",
-        "button_text":        "#FFFFFF",
-        "splitter":           "#CCCCCC",
-        "scrollbar_handle":   "#BBBBBB"
-      }
-    },
-    "Claro": {
-      "background": "#FAFAFA",
-      "foreground": "#1E1E1E",
-      "keyword": "#0070C1",
-      "keyword2": "#AF00DB",
-      "type": "#267F99",
-      "number": "#098658",
-      "string": "#D67E00",
-      "comment": "#5C9E5C",
-      "operator": "#555555",
-      "identifier": "#001080",
-      "caret_line": "#F0F4FF",
-      "margin_background": "#EEEEEE",
-      "margin_foreground": "#AAAAAA",
-      "selection": "#BDD6FD",
-      "ui": {
-        "app_background":     "#EEF2F7",
-        "panel_background":   "#F5F7FA",
-        "tree_background":    "#FAFAFA",
-        "menubar_background": "#E2E8F2",
-        "text":               "#1E1E1E",
-        "text_muted":         "#6B7280",
-        "border":             "#D0D7E3",
-        "item_selected":      "#BDD6FD",
-        "item_hover":         "#DDE8F5",
-        "input_background":   "#FFFFFF",
-        "button_primary":     "#0E639C",
-        "button_text":        "#FFFFFF",
-        "splitter":           "#D0D7E3",
-        "scrollbar_handle":   "#B0BAC9"
-      }
+    "Escuro": {
+      "background": "#1E1E1E",
+      "foreground": "#D4D4D4",
+      "keyword": "#569CD6",
+      "keyword2": "#C586C0",
+      "type": "#4EC9B0",
+      "number": "#B5CEA8",
+      "string": "#CE9178",
+      "comment": "#6A9955",
+      "operator": "#D4D4D4",
+      "identifier": "#9CDCFE",
+      "caret_line": "#2A2D2E",
+      "margin_background": "#252526",
+      "margin_foreground": "#858585",
+      "selection": "#264F78"
     }
   },
-  "active_theme": "Senior (padrão)"
+  "active_theme": "Escuro"
 }

@@ -5,18 +5,17 @@ from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QTextEdit, QSplitter,
     QMessageBox, QFileDialog, QFrame, QStackedWidget,
 )
-from PyQt6.QtCore import Qt, QTimer, QObject, QEvent, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, QObject, QEvent
 from PyQt6.QtWidgets import QApplication
 from PyQt6.Qsci import QsciScintilla
 from PyQt6.QtGui import QColor, QFont
 
 import database.models as M
-from core.highlighter import LSPLexer, load_theme, list_themes, save_active_theme, gerar_stylesheet_ui
+from core.highlighter import LSPLexer, load_theme
 from core.version_manager import diff_versoes, sugerir_tipo_para_regra
 from ui.dialogs import DialogVersao
 from ui.diff_viewer import DiffViewer
 from ui.version_history import VersionHistory
-from ui.theme_color_dialog import ThemeColorDialog
 
 STATUS_CORES = {
     "Em desenvolvimento": "#569CD6",
@@ -31,8 +30,6 @@ def _badge(status: str) -> str:
 
 
 class EditorPanel(QWidget):
-    tema_alterado = pyqtSignal(dict)   # emite o tema completo ao trocar
-
     def __init__(self, conn, parent=None):
         super().__init__(parent)
         self.conn = conn
@@ -57,26 +54,6 @@ class EditorPanel(QWidget):
         self.label_regra.setStyleSheet("font-weight: bold; font-size: 13px;")
         barra.addWidget(self.label_regra)
         barra.addStretch()
-
-        barra.addWidget(QLabel("Tema:"))
-        self.combo_tema = QComboBox()
-        self.combo_tema.addItems(list_themes())
-        # Seleciona o tema persistido sem disparar o sinal
-        from core.paths import data_path
-        _themes_json = data_path() / "config" / "themes.json"
-        _tema_ativo = json.loads(_themes_json.read_text(encoding="utf-8"))["active_theme"]
-        _idx = self.combo_tema.findText(_tema_ativo)
-        if _idx >= 0:
-            self.combo_tema.setCurrentIndex(_idx)
-        self.combo_tema.currentTextChanged.connect(self._trocar_tema)
-        barra.addWidget(self.combo_tema)
-
-        btn_cores = QPushButton("Cores...")
-        btn_cores.setFixedWidth(70)
-        btn_cores.setToolTip("Personalizar cores de sintaxe do tema atual")
-        btn_cores.clicked.connect(self._abrir_cores)
-        barra.addWidget(btn_cores)
-
         layout.addLayout(barra)
 
         # Splitter: editor | painel versões
@@ -333,34 +310,6 @@ class EditorPanel(QWidget):
             QScrollBar::add-line:horizontal,
             QScrollBar::sub-line:horizontal { width: 0px; }
         """)
-
-    def _trocar_tema(self, nome: str):
-        if self._lexer:
-            self._lexer.apply_theme(nome)
-            self._aplicar_cores_editor()
-            save_active_theme(nome)
-            self.tema_alterado.emit(self._lexer._theme)
-
-    def _aplicar_cores_editor(self):
-        if self._lexer:
-            t = self._lexer._theme
-            self.editor.setMarginsBackgroundColor(QColor(t["margin_background"]))
-            self.editor.setMarginsForegroundColor(QColor(t["margin_foreground"]))
-            self.editor.setCaretLineBackgroundColor(QColor(t["caret_line"]))
-            self.editor.setSelectionBackgroundColor(QColor(t["selection"]))
-
-    def _abrir_cores(self):
-        dlg = ThemeColorDialog(self)
-        if dlg.exec():
-            linha, col = self.editor.getCursorPosition()
-            scroll_h = self.editor.horizontalScrollBar().value()
-            scroll_v = self.editor.verticalScrollBar().value()
-            self._lexer.apply_theme(self.combo_tema.currentText())
-            self._aplicar_cores_editor()
-            self.editor.setCursorPosition(linha, col)
-            self.editor.horizontalScrollBar().setValue(scroll_h)
-            self.editor.verticalScrollBar().setValue(scroll_v)
-            self.tema_alterado.emit(self._lexer._theme)
 
     def salvar_se_pendente(self):
         """Salva imediatamente se houver um autosave pendente ou versão aberta."""
