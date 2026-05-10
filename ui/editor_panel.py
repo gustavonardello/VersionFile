@@ -153,9 +153,10 @@ class EditorPanel(QWidget):
         btn_marcar_atual.clicked.connect(self._marcar_atual)
         pv_layout.addWidget(btn_marcar_atual)
 
-        btn_exportar = QPushButton("Exportar .lsp")
-        btn_exportar.clicked.connect(self._exportar)
-        pv_layout.addWidget(btn_exportar)
+        self.btn_exportar = QPushButton("Exportar .lsp")
+        self.btn_exportar.clicked.connect(self._exportar)
+        self.btn_exportar.setEnabled(False)
+        pv_layout.addWidget(self.btn_exportar)
 
         btn_historico = QPushButton("Ver histórico")
         btn_historico.setToolTip("Visualiza todas as versões com opção de carregar ou excluir")
@@ -333,6 +334,7 @@ class EditorPanel(QWidget):
                 f"{regra['cli']} / {regra['proj']} / Regra {regra['numero']}{desc}"
             )
 
+        self.btn_exportar.setEnabled(True)
         self._recarregar_versoes()
 
     def _recarregar_versoes(self):
