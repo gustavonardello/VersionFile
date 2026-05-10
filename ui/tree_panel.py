@@ -161,18 +161,25 @@ class TreePanel(QWidget):
         encontrados = 0
         for i in range(self.tree.topLevelItemCount()):
             item_c = self.tree.topLevelItem(i)
-            tem_cliente = False
+            bate_cliente = termo in item_c.text(0).lower()
+            tem_cliente = bate_cliente
 
             for j in range(item_c.childCount()):
                 item_p = item_c.child(j)
-                tem_projeto = False
+                bate_projeto = termo in item_p.text(0).lower()
+                tem_projeto = bate_projeto
 
                 for k in range(item_p.childCount()):
                     item_r = item_p.child(k)
                     d = self._dados(item_r)
                     texto = item_r.text(0).lower()
 
-                    bate = (termo in texto) or (buscar_conteudo and d["id"] in regras_conteudo)
+                    bate = (
+                        bate_cliente
+                        or bate_projeto
+                        or (termo in texto)
+                        or (buscar_conteudo and d["id"] in regras_conteudo)
+                    )
                     item_r.setHidden(not bate)
                     if bate:
                         tem_projeto = True
