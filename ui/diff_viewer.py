@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QTextCursor, QTextCharFormat, QColor, QTextBlockFormat
 import database.models as M
-from core.highlighter import load_theme
 
 # Cores para linhas com alteração (fundo branco, destaque vermelho claro)
 COR_IGUAL    = ("#FFFFFF", "#1E1E1E")
@@ -218,58 +217,43 @@ class DiffViewer(QDialog):
         removidas   = sum(1 for _, bg, _ in esq  if bg == COR_REMOVIDO[0])
         adicionadas = sum(1 for _, bg, _ in dir_ if bg == COR_ADICAO[0])
         alteradas   = sum(1 for _, bg, _ in esq  if bg == COR_MUDADO[0])
-
-        tema = load_theme()
-        u = tema.get("ui", {})
-        mt = u.get("text_muted", "#666666")
-        self.label_stats.setStyleSheet(f"color: {mt}; font-size: 11px; padding: 1px 2px;")
         self.label_stats.setText(
             f"  -{removidas} removidas   +{adicionadas} adicionadas   ~{alteradas} alteradas"
         )
 
     def _aplicar_estilo(self):
-        tema = load_theme()
-        u = tema.get("ui", {})
-        ab  = u.get("app_background",   "#F0F0F0")
-        pb  = u.get("panel_background", "#FAFAFA")
-        tx  = u.get("text",             "#1E1E1E")
-        bd  = u.get("border",           "#CCCCCC")
-        sel = u.get("item_selected",    "#ADD6FF")
-        inp = u.get("input_background", "#FFFFFF")
-        sh  = u.get("scrollbar_handle", "#BBBBBB")
-
-        self.setStyleSheet(f"""
-            QDialog, QWidget {{
-                background-color: {ab};
-                color: {tx};
-            }}
-            QTextEdit {{
-                background-color: {inp};
-                color: {tx};
-                border: 1px solid {bd};
-            }}
-            QComboBox, QLabel {{
-                color: {tx};
+        self.setStyleSheet("""
+            QDialog, QWidget {
+                background-color: #1E1E1E;
+                color: #D4D4D4;
+            }
+            QTextEdit {
+                background-color: #1E1E1E;
+                color: #D4D4D4;
+                border: 1px solid #444;
+            }
+            QComboBox, QLabel {
+                color: #D4D4D4;
                 font-family: Segoe UI;
-            }}
-            QComboBox {{
-                background-color: {inp};
-                border: 1px solid {bd};
+            }
+            QComboBox {
+                background-color: #3C3C3C;
+                border: 1px solid #555;
                 padding: 2px 6px;
                 border-radius: 2px;
-            }}
-            QPushButton {{
+            }
+            QPushButton {
                 background-color: #0E639C;
                 color: white;
                 border: none;
                 padding: 4px 14px;
                 border-radius: 2px;
-            }}
-            QPushButton:hover {{ background-color: #1177BB; }}
-            QSplitter::handle {{ background-color: {bd}; }}
-            QScrollBar:vertical {{ background: {pb}; width: 10px; }}
-            QScrollBar::handle:vertical {{ background: {sh}; border-radius: 4px; }}
-            QScrollBar:horizontal {{ background: {pb}; height: 10px; }}
-            QScrollBar::handle:horizontal {{ background: {sh}; border-radius: 4px; }}
-            QFrame {{ color: {bd}; }}
+            }
+            QPushButton:hover { background-color: #1177BB; }
+            QSplitter::handle { background-color: #444; }
+            QScrollBar:vertical { background: #252526; width: 10px; }
+            QScrollBar::handle:vertical { background: #555; border-radius: 4px; }
+            QScrollBar:horizontal { background: #252526; height: 10px; }
+            QScrollBar::handle:horizontal { background: #555; border-radius: 4px; }
+            QFrame { color: #444; }
         """)
