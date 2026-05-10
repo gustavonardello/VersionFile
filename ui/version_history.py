@@ -233,5 +233,5 @@ class VersionHistory(QDialog):
                 border: none; padding: 5px 16px; border-radius: 4px;
             }
             QPushButton:hover { background-color: #1177BB; }
-            QLabel { font-family: Segoe UI; }
+            QLabel { font-family: Segoe UI; background: transparent; }
         """)
