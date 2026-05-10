@@ -92,6 +92,7 @@ class EditorPanel(QWidget):
 
         self.combo_versoes = QComboBox()
         self.combo_versoes.currentIndexChanged.connect(self._carregar_versao)
+        self.combo_versoes.setEnabled(False)
         pv_layout.addWidget(self.combo_versoes)
 
         self.label_status = QLabel("")
@@ -109,6 +110,7 @@ class EditorPanel(QWidget):
         self.combo_status = QComboBox()
         self.combo_status.addItems(list(STATUS_CORES.keys()))
         self.combo_status.currentTextChanged.connect(self._agendar_autosave)
+        self.combo_status.setEnabled(False)
         pv_layout.addWidget(self.combo_status)
 
         pv_layout.addSpacing(2)
@@ -122,6 +124,7 @@ class EditorPanel(QWidget):
         self.campo_notas.setMaximumHeight(90)
         self.campo_notas.setPlaceholderText("Descreva as alterações desta versão...")
         self.campo_notas.textChanged.connect(self._agendar_autosave)
+        self.campo_notas.setEnabled(False)
         pv_layout.addWidget(self.campo_notas)
 
         btn_salvar_tudo = QPushButton("Salvar  Ctrl+S")
@@ -343,6 +346,9 @@ class EditorPanel(QWidget):
         self._recarregar_versoes()
 
     def _set_acoes_habilitadas(self, habilitado: bool):
+        self.combo_versoes.setEnabled(habilitado)
+        self.combo_status.setEnabled(habilitado)
+        self.campo_notas.setEnabled(habilitado)
         self.btn_nova_versao.setEnabled(habilitado)
         self.btn_marcar_atual.setEnabled(habilitado)
         self.btn_exportar.setEnabled(habilitado)
