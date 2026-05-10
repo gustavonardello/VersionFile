@@ -339,12 +339,20 @@ class EditorPanel(QWidget):
                 f"{regra['cli']} / {regra['proj']} / Regra {regra['numero']}{desc}"
             )
 
-        self.btn_nova_versao.setEnabled(True)
-        self.btn_marcar_atual.setEnabled(True)
-        self.btn_exportar.setEnabled(True)
-        self.btn_historico.setEnabled(True)
-        self.btn_diff.setEnabled(True)
+        self._set_acoes_habilitadas(True)
         self._recarregar_versoes()
+
+    def _set_acoes_habilitadas(self, habilitado: bool):
+        self.btn_nova_versao.setEnabled(habilitado)
+        self.btn_marcar_atual.setEnabled(habilitado)
+        self.btn_exportar.setEnabled(habilitado)
+        self.btn_historico.setEnabled(habilitado)
+        self.btn_diff.setEnabled(habilitado)
+
+    def desabilitar_acoes(self):
+        self._regra_id = None
+        self._versao_atual = None
+        self._set_acoes_habilitadas(False)
 
     def _recarregar_versoes(self):
         self.combo_versoes.blockSignals(True)
