@@ -127,11 +127,12 @@ class EditorPanel(QWidget):
         self.campo_notas.setEnabled(False)
         pv_layout.addWidget(self.campo_notas)
 
-        btn_salvar_tudo = QPushButton("Salvar  Ctrl+S")
-        btn_salvar_tudo.setShortcut("Ctrl+S")
-        btn_salvar_tudo.setObjectName("btnPrimario")
-        btn_salvar_tudo.clicked.connect(self._salvar_tudo)
-        pv_layout.addWidget(btn_salvar_tudo)
+        self.btn_salvar_tudo = QPushButton("Salvar  Ctrl+S")
+        self.btn_salvar_tudo.setShortcut("Ctrl+S")
+        self.btn_salvar_tudo.setObjectName("btnPrimario")
+        self.btn_salvar_tudo.setEnabled(False)
+        self.btn_salvar_tudo.clicked.connect(self._salvar_tudo)
+        pv_layout.addWidget(self.btn_salvar_tudo)
 
         pv_layout.addSpacing(4)
 
@@ -342,6 +343,7 @@ class EditorPanel(QWidget):
         self.combo_versoes.setEnabled(habilitado)
         self.combo_status.setEnabled(habilitado)
         self.campo_notas.setEnabled(habilitado)
+        self.btn_salvar_tudo.setEnabled(habilitado)
         self.btn_nova_versao.setEnabled(habilitado)
         self.btn_marcar_atual.setEnabled(habilitado)
         self.btn_exportar.setEnabled(habilitado)
