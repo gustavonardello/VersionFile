@@ -228,6 +228,7 @@ class EditorPanel(QWidget):
             }
             QPushButton:hover { background-color: #4A4A4A; border-color: #6A6A6A; }
             QPushButton:pressed { background-color: #2A2A2A; }
+            QPushButton:disabled { color: #555555; border-color: #3A3A3A; }
             QPushButton#btnPrimario {
                 background-color: #0E639C;
                 color: white;
