@@ -7,7 +7,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 from PyQt6.Qsci import QsciScintilla
 import database.models as M
-from core.highlighter import LSPLexer
 
 # Índices dos markers de linha
 MARKER_REMOVIDO = 0
@@ -59,11 +58,8 @@ def _criar_editor() -> QsciScintilla:
     editor.setReadOnly(True)
     editor.setFont(QFont("Consolas", 10))
     editor.setWrapMode(QsciScintilla.WrapMode.WrapNone)
+    editor.setLexer(None)
 
-    lexer = LSPLexer(editor)
-    editor.setLexer(lexer)
-
-    # Fundo branco para o conteúdo
     editor.setPaper(QColor("#FFFFFF"))
     editor.setColor(QColor("#1E1E1E"))
     editor.setMarginsBackgroundColor(QColor("#F3F3F3"))
