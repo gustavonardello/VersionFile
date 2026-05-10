@@ -5,13 +5,13 @@ from PyQt6.QtWidgets import (
     QComboBox, QPushButton, QTextEdit, QSplitter,
     QMessageBox, QFileDialog, QFrame, QStackedWidget,
 )
-from PyQt6.QtCore import Qt, QTimer, QObject, QEvent
+from PyQt6.QtCore import Qt, QTimer, QObject, QEvent, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 from PyQt6.Qsci import QsciScintilla
 from PyQt6.QtGui import QColor, QFont
 
 import database.models as M
-from core.highlighter import LSPLexer, load_theme, list_themes, save_active_theme
+from core.highlighter import LSPLexer, load_theme, list_themes, save_active_theme, gerar_stylesheet_ui
 from core.version_manager import diff_versoes, sugerir_tipo_para_regra
 from ui.dialogs import DialogVersao
 from ui.diff_viewer import DiffViewer
@@ -31,6 +31,8 @@ def _badge(status: str) -> str:
 
 
 class EditorPanel(QWidget):
+    tema_alterado = pyqtSignal(dict)   # emite o tema completo ao trocar
+
     def __init__(self, conn, parent=None):
         super().__init__(parent)
         self.conn = conn
@@ -337,6 +339,7 @@ class EditorPanel(QWidget):
             self._lexer.apply_theme(nome)
             self._aplicar_cores_editor()
             save_active_theme(nome)
+            self.tema_alterado.emit(self._lexer._theme)
 
     def _aplicar_cores_editor(self):
         if self._lexer:
@@ -357,6 +360,7 @@ class EditorPanel(QWidget):
             self.editor.setCursorPosition(linha, col)
             self.editor.horizontalScrollBar().setValue(scroll_h)
             self.editor.verticalScrollBar().setValue(scroll_v)
+            self.tema_alterado.emit(self._lexer._theme)
 
     def salvar_se_pendente(self):
         """Salva imediatamente se houver um autosave pendente ou versão aberta."""
