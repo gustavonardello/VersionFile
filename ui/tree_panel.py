@@ -272,6 +272,10 @@ class TreePanel(QWidget):
             menu.addSeparator()
             menu.addAction("Novo cliente").triggered.connect(self._novo_cliente)
 
+        menu.addSeparator()
+        menu.addAction("Expandir tudo").triggered.connect(self.tree.expandAll)
+        menu.addAction("Recolher tudo").triggered.connect(self.tree.collapseAll)
+
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
     # --- Ações ---
