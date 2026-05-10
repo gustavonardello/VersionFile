@@ -21,6 +21,7 @@ def _item(texto: str, tipo: str, id_: int, extra=None) -> QTreeWidgetItem:
 
 class TreePanel(QWidget):
     regra_selecionada = pyqtSignal(int)   # regra_id
+    regra_desmarcada  = pyqtSignal()
 
     def __init__(self, conn, parent=None):
         super().__init__(parent)
@@ -207,10 +208,13 @@ class TreePanel(QWidget):
     def _on_selecao(self):
         itens = self.tree.selectedItems()
         if not itens:
+            self.regra_desmarcada.emit()
             return
         d = self._dados(itens[0])
         if d.get("tipo") == NODE_REGRA:
             self.regra_selecionada.emit(d["id"])
+        else:
+            self.regra_desmarcada.emit()
 
     def _on_click(self, item: QTreeWidgetItem, _col):
         d = self._dados(item)

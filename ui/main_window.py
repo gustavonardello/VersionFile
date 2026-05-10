@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(splitter)
 
         self.tree_panel.regra_selecionada.connect(self.editor_panel.abrir_regra)
+        self.tree_panel.regra_desmarcada.connect(self.editor_panel.desabilitar_acoes)
 
     def _criar_menu(self):
         barra = self.menuBar()
