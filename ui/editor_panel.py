@@ -157,10 +157,6 @@ class EditorPanel(QWidget):
         btn_exportar.clicked.connect(self._exportar)
         pv_layout.addWidget(btn_exportar)
 
-        btn_importar = QPushButton("Importar arquivo")
-        btn_importar.clicked.connect(self._importar)
-        pv_layout.addWidget(btn_importar)
-
         btn_historico = QPushButton("Ver histórico")
         btn_historico.setToolTip("Visualiza todas as versões com opção de carregar ou excluir")
         btn_historico.clicked.connect(self._abrir_historico)
@@ -421,23 +417,6 @@ class EditorPanel(QWidget):
         if path:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(self._versao_atual.conteudo)
-
-    def _importar(self):
-        if not self._regra_id:
-            return
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Importar", "", "Texto (*.txt *.lsp);;Todos (*.*)"
-        )
-        if path:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
-                conteudo = f.read()
-            versoes = M.listar_versoes(self.conn, self._regra_id)
-            proximo_numero = (versoes[0].numero + 1) if versoes else 1
-            tipo_sugerido = sugerir_tipo_para_regra(self.conn, self._regra_id, conteudo)
-            dlg = DialogVersao(self, tipo_sugerido=tipo_sugerido, numero_versao=proximo_numero)
-            if dlg.exec():
-                M.criar_versao(self.conn, self._regra_id, conteudo, dlg.notas, dlg.tipo)
-                self._recarregar_versoes()
 
     def _excluir_versao(self):
         if not self._versao_atual:
