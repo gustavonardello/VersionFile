@@ -224,7 +224,9 @@ class EditorPanel(QWidget):
                 font-size: 12px;
             }
             QComboBox:hover { border-color: #6A6A6A; }
+            QComboBox:disabled { color: #555555; border-color: #3A3A3A; }
             QComboBox::drop-down { border: none; width: 20px; }
+            QTextEdit:disabled { color: #555555; border-color: #3A3A3A; }
             QTextEdit {
                 background-color: #3C3C3C;
                 border: 1px solid #4A4A4A;
