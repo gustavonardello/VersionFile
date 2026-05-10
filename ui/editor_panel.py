@@ -3,7 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QComboBox, QPushButton, QTextEdit, QSplitter,
-    QMessageBox, QFileDialog, QFrame,
+    QMessageBox, QFileDialog, QFrame, QStackedWidget,
 )
 from PyQt6.QtCore import Qt, QTimer, QObject, QEvent
 from PyQt6.QtWidgets import QApplication
@@ -72,11 +72,24 @@ class EditorPanel(QWidget):
         # Splitter: editor | painel versões
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Editor
+        # Editor (dentro de um stack para alternar com tela vazia)
         self.editor = QsciScintilla()
         self._setup_editor()
         self.editor.textChanged.connect(self._agendar_autosave)
-        splitter.addWidget(self.editor)
+
+        self._tela_vazia = QWidget()
+        self._tela_vazia.setStyleSheet("background-color: #1E1E1E;")
+        lbl_vazio = QLabel("Selecione uma regra para editar")
+        lbl_vazio.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_vazio.setStyleSheet("color: #3C3C3C; font-size: 14px;")
+        lay_vazio = QVBoxLayout(self._tela_vazia)
+        lay_vazio.addWidget(lbl_vazio)
+
+        self._stack_editor = QStackedWidget()
+        self._stack_editor.addWidget(self._tela_vazia)  # índice 0 — sem regra
+        self._stack_editor.addWidget(self.editor)        # índice 1 — com regra
+        self._stack_editor.setCurrentIndex(0)
+        splitter.addWidget(self._stack_editor)
 
         # Painel direito (versões + notas)
         painel_versoes = QWidget()
@@ -346,6 +359,7 @@ class EditorPanel(QWidget):
         self._recarregar_versoes()
 
     def _set_acoes_habilitadas(self, habilitado: bool):
+        self._stack_editor.setCurrentIndex(1 if habilitado else 0)
         self.combo_versoes.setEnabled(habilitado)
         self.combo_status.setEnabled(habilitado)
         self.campo_notas.setEnabled(habilitado)
