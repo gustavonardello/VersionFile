@@ -451,8 +451,17 @@ class EditorPanel(QWidget):
     def _exportar(self):
         if not self._versao_atual:
             return
+        regra = self.conn.execute(
+            "SELECT numero, descricao FROM regras WHERE id = ?", (self._regra_id,)
+        ).fetchone()
+        import re
+        def _sanitizar(t): return re.sub(r'[\\/:*?"<>|]', "", t).strip()
+        numero = regra["numero"] if regra else "regra"
+        desc = _sanitizar(regra["descricao"] or "") if regra else ""
+        base = f"{numero} - {desc}" if desc else numero
+        nome_sugerido = f"{base}_v{self._versao_atual.numero}.lsp"
         path, _ = QFileDialog.getSaveFileName(
-            self, "Exportar", f"regra_v{self._versao_atual.numero}.lsp",
+            self, "Exportar", nome_sugerido,
             "LSP (*.lsp);;Texto (*.txt)"
         )
         if path:
