@@ -16,6 +16,7 @@ from core.version_manager import diff_versoes, sugerir_tipo_para_regra
 from ui.dialogs import DialogVersao
 from ui.diff_viewer import DiffViewer
 from ui.version_history import VersionHistory
+from ui.theme_color_dialog import ThemeColorDialog
 
 STATUS_CORES = {
     "Em desenvolvimento": "#569CD6",
@@ -67,6 +68,13 @@ class EditorPanel(QWidget):
             self.combo_tema.setCurrentIndex(_idx)
         self.combo_tema.currentTextChanged.connect(self._trocar_tema)
         barra.addWidget(self.combo_tema)
+
+        btn_cores = QPushButton("Cores...")
+        btn_cores.setFixedWidth(70)
+        btn_cores.setToolTip("Personalizar cores de sintaxe do tema atual")
+        btn_cores.clicked.connect(self._abrir_cores)
+        barra.addWidget(btn_cores)
+
         layout.addLayout(barra)
 
         # Splitter: editor | painel versões
@@ -327,12 +335,22 @@ class EditorPanel(QWidget):
     def _trocar_tema(self, nome: str):
         if self._lexer:
             self._lexer.apply_theme(nome)
+            self._aplicar_cores_editor()
+            save_active_theme(nome)
+
+    def _aplicar_cores_editor(self):
+        if self._lexer:
             t = self._lexer._theme
             self.editor.setMarginsBackgroundColor(QColor(t["margin_background"]))
             self.editor.setMarginsForegroundColor(QColor(t["margin_foreground"]))
             self.editor.setCaretLineBackgroundColor(QColor(t["caret_line"]))
             self.editor.setSelectionBackgroundColor(QColor(t["selection"]))
-            save_active_theme(nome)
+
+    def _abrir_cores(self):
+        dlg = ThemeColorDialog(self)
+        if dlg.exec():
+            self._lexer.apply_theme(self.combo_tema.currentText())
+            self._aplicar_cores_editor()
 
     def salvar_se_pendente(self):
         """Salva imediatamente se houver um autosave pendente ou versão aberta."""
