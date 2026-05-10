@@ -349,8 +349,14 @@ class EditorPanel(QWidget):
     def _abrir_cores(self):
         dlg = ThemeColorDialog(self)
         if dlg.exec():
+            linha, col = self.editor.getCursorPosition()
+            scroll_h = self.editor.horizontalScrollBar().value()
+            scroll_v = self.editor.verticalScrollBar().value()
             self._lexer.apply_theme(self.combo_tema.currentText())
             self._aplicar_cores_editor()
+            self.editor.setCursorPosition(linha, col)
+            self.editor.horizontalScrollBar().setValue(scroll_h)
+            self.editor.verticalScrollBar().setValue(scroll_v)
 
     def salvar_se_pendente(self):
         """Salva imediatamente se houver um autosave pendente ou versão aberta."""
