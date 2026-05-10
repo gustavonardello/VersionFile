@@ -322,6 +322,15 @@ class ExportDialog(QDialog):
                 border-radius: 2px;
             }
             QCheckBox { color: #D4D4D4; }
+            QCheckBox::indicator {
+                border: 1px solid #D4D4D4;
+                border-radius: 2px;
+                background-color: #3C3C3C;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0E639C;
+                border-color: #D4D4D4;
+            }
             QPushButton {
                 background-color: #0E639C;
                 color: white;
