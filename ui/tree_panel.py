@@ -1,3 +1,4 @@
+import json
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QMenu, QMessageBox, QLineEdit, QCheckBox, QLabel,
@@ -6,11 +7,13 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QColor, QPixmap
 import database.models as M
 from ui.dialogs import DialogCliente, DialogProjeto, DialogRegra
-from core.paths import base_path
+from core.paths import base_path, data_path
 
 NODE_CLIENTE = "cliente"
 NODE_PROJETO = "projeto"
 NODE_REGRA   = "regra"
+
+_TREE_STATE_PATH = data_path() / "config" / "tree_state.json"
 
 
 def _item(texto: str, tipo: str, id_: int, extra=None) -> QTreeWidgetItem:
@@ -63,6 +66,8 @@ class TreePanel(QWidget):
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._context_menu)
         self.tree.itemSelectionChanged.connect(self._on_selecao)
+        self.tree.itemExpanded.connect(self._on_expandido)
+        self.tree.itemCollapsed.connect(self._on_recolhido)
         layout.addWidget(self.tree)
 
         # Debounce: só filtra 300ms após parar de digitar
@@ -107,9 +112,8 @@ class TreePanel(QWidget):
                 item_p.setExpanded(expandir_p)
 
     def carregar(self, ids_novos_clientes: set = None, ids_novos_projetos: set = None):
-        estado = self._estado_expandido()
-        # Primeira carga: expande tudo
         primeira_vez = self.tree.topLevelItemCount() == 0
+        estado = self._carregar_estado_salvo() if primeira_vez else self._estado_expandido()
 
         self.tree.blockSignals(True)
         self.tree.clear()
@@ -127,9 +131,10 @@ class TreePanel(QWidget):
                 item_c.addChild(item_p)
             self.tree.addTopLevelItem(item_c)
 
-        if primeira_vez:
+        if primeira_vez and estado is None:
+            # Sem estado salvo: expande tudo na primeira vez
             self.tree.expandAll()
-        else:
+        elif estado is not None:
             self._restaurar_expandido(
                 estado,
                 ids_novos_clientes or set(),
@@ -137,6 +142,40 @@ class TreePanel(QWidget):
             )
 
         self.tree.blockSignals(False)
+
+    # --- Persistência do estado expandido ---
+
+    def _salvar_estado(self):
+        estado = self._estado_expandido()
+        dados = {
+            "clientes": list(estado["clientes"]),
+            "projetos": list(estado["projetos"]),
+        }
+        try:
+            _TREE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            _TREE_STATE_PATH.write_text(
+                json.dumps(dados, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    def _carregar_estado_salvo(self) -> dict:
+        try:
+            if _TREE_STATE_PATH.exists():
+                dados = json.loads(_TREE_STATE_PATH.read_text(encoding="utf-8"))
+                return {
+                    "clientes": set(dados.get("clientes", [])),
+                    "projetos": set(dados.get("projetos", [])),
+                }
+        except Exception:
+            pass
+        return None
+
+    def _on_expandido(self, _item):
+        self._salvar_estado()
+
+    def _on_recolhido(self, _item):
+        self._salvar_estado()
 
     def _aplicar_filtro(self):
         termo = self.campo_busca.text().strip().lower()
