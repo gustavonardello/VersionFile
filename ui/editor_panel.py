@@ -145,28 +145,32 @@ class EditorPanel(QWidget):
         lbl_sec_acoes.setObjectName("secLabel")
         pv_layout.addWidget(lbl_sec_acoes)
 
-        btn_nova_versao = QPushButton("+ Nova versão")
-        btn_nova_versao.clicked.connect(self._nova_versao)
-        pv_layout.addWidget(btn_nova_versao)
+        self.btn_nova_versao = QPushButton("+ Nova versão")
+        self.btn_nova_versao.clicked.connect(self._nova_versao)
+        self.btn_nova_versao.setEnabled(False)
+        pv_layout.addWidget(self.btn_nova_versao)
 
-        btn_marcar_atual = QPushButton("Marcar como atual")
-        btn_marcar_atual.clicked.connect(self._marcar_atual)
-        pv_layout.addWidget(btn_marcar_atual)
+        self.btn_marcar_atual = QPushButton("Marcar como atual")
+        self.btn_marcar_atual.clicked.connect(self._marcar_atual)
+        self.btn_marcar_atual.setEnabled(False)
+        pv_layout.addWidget(self.btn_marcar_atual)
 
         self.btn_exportar = QPushButton("Exportar .lsp")
         self.btn_exportar.clicked.connect(self._exportar)
         self.btn_exportar.setEnabled(False)
         pv_layout.addWidget(self.btn_exportar)
 
-        btn_historico = QPushButton("Ver histórico")
-        btn_historico.setToolTip("Visualiza todas as versões com opção de carregar ou excluir")
-        btn_historico.clicked.connect(self._abrir_historico)
-        pv_layout.addWidget(btn_historico)
+        self.btn_historico = QPushButton("Ver histórico")
+        self.btn_historico.setToolTip("Visualiza todas as versões com opção de carregar ou excluir")
+        self.btn_historico.clicked.connect(self._abrir_historico)
+        self.btn_historico.setEnabled(False)
+        pv_layout.addWidget(self.btn_historico)
 
-        btn_diff = QPushButton("Comparar versões")
-        btn_diff.setToolTip("Abre o diff visual lado a lado entre duas versões")
-        btn_diff.clicked.connect(self._abrir_diff)
-        pv_layout.addWidget(btn_diff)
+        self.btn_diff = QPushButton("Comparar versões")
+        self.btn_diff.setToolTip("Abre o diff visual lado a lado entre duas versões")
+        self.btn_diff.clicked.connect(self._abrir_diff)
+        self.btn_diff.setEnabled(False)
+        pv_layout.addWidget(self.btn_diff)
 
         pv_layout.addSpacing(4)
 
@@ -334,7 +338,11 @@ class EditorPanel(QWidget):
                 f"{regra['cli']} / {regra['proj']} / Regra {regra['numero']}{desc}"
             )
 
+        self.btn_nova_versao.setEnabled(True)
+        self.btn_marcar_atual.setEnabled(True)
         self.btn_exportar.setEnabled(True)
+        self.btn_historico.setEnabled(True)
+        self.btn_diff.setEnabled(True)
         self._recarregar_versoes()
 
     def _recarregar_versoes(self):
