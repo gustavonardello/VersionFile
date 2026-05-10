@@ -3,7 +3,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QAction, QIcon
 from ui.tree_panel import TreePanel
 from ui.editor_panel import EditorPanel
-from ui.import_dialog import ImportDialog
 from ui.export_dialog import ExportDialog
 from core.paths import base_path
 
@@ -51,11 +50,6 @@ class MainWindow(QMainWindow):
 
         menu_arquivo = barra.addMenu("Arquivo")
 
-        act_importar = QAction("Importar estrutura de pastas...", self)
-        act_importar.setShortcut("Ctrl+I")
-        act_importar.triggered.connect(self._abrir_importacao)
-        menu_arquivo.addAction(act_importar)
-
         act_exportar = QAction("Exportar múltiplas regras...", self)
         act_exportar.setShortcut("Ctrl+E")
         act_exportar.triggered.connect(self._abrir_exportacao)
@@ -71,11 +65,6 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self.editor_panel.salvar_se_pendente()
         super().closeEvent(event)
-
-    def _abrir_importacao(self):
-        dlg = ImportDialog(self.conn, parent=self)
-        dlg.importacao_concluida.connect(self.tree_panel.carregar)
-        dlg.exec()
 
     def _abrir_exportacao(self):
         dlg = ExportDialog(self.conn, parent=self)

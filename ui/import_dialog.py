@@ -63,7 +63,7 @@ class ImportDialog(QDialog):
 
         # Instrução
         self.label_instrucao = QLabel(
-            "Estrutura esperada:  pasta_raiz / Cliente / Projeto ou DID / arquivo.txt"
+            "Estrutura aceita:  pasta_raiz / Cliente / Projeto / arquivo  —  ou  pasta_raiz / Projeto / arquivo  —  ou  pasta_raiz / arquivo"
         )
         self.label_instrucao.setStyleSheet("color:#858585; font-size:11px;")
         layout.addWidget(self.label_instrucao)
