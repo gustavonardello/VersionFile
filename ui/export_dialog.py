@@ -1,9 +1,9 @@
+import re
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QTreeWidget, QTreeWidgetItem, QLineEdit,
-    QComboBox, QMessageBox, QFrame, QCheckBox, QAbstractItemView,
-    QProgressDialog,
+    QComboBox, QMessageBox, QFrame, QCheckBox, QProgressDialog,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
@@ -11,6 +11,11 @@ from PyQt6.QtGui import QColor, QFont
 import database.models as M
 
 VERSAO_OPTS = ["Atual", "Mais recente", "Todas as versões"]
+
+
+def _sanitizar(texto: str) -> str:
+    """Remove caracteres inválidos para nomes de arquivo."""
+    return re.sub(r'[\\/:*?"<>|]', "", texto).strip()
 
 
 class ExportDialog(QDialog):
@@ -25,6 +30,7 @@ class ExportDialog(QDialog):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
+        layout.setSpacing(8)
 
         # Opções de exportação
         row_opts = QHBoxLayout()
@@ -43,7 +49,7 @@ class ExportDialog(QDialog):
         self.check_subpastas = QCheckBox("Recriar estrutura de pastas")
         self.check_subpastas.setChecked(True)
         self.check_subpastas.setToolTip(
-            "Cria subpastas Cliente/Projeto/Regra no destino.\n"
+            "Cria subpastas Cliente/Projeto no destino.\n"
             "Desmarcado: todos os arquivos na mesma pasta."
         )
         row_opts.addWidget(self.check_subpastas)
@@ -52,6 +58,7 @@ class ExportDialog(QDialog):
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setStyleSheet("color:#444;")
         layout.addWidget(sep)
 
         # Árvore de seleção
@@ -69,7 +76,7 @@ class ExportDialog(QDialog):
 
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Regra", "Versões"])
-        self.tree.setColumnWidth(0, 420)
+        self.tree.setColumnWidth(0, 450)
         self.tree.itemChanged.connect(self._propagar_check)
         layout.addWidget(self.tree)
 
@@ -79,6 +86,7 @@ class ExportDialog(QDialog):
 
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet("color:#444;")
         layout.addWidget(sep2)
 
         # Pasta de destino
@@ -97,6 +105,7 @@ class ExportDialog(QDialog):
         row_btn = QHBoxLayout()
         row_btn.addStretch()
         btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.setObjectName("btnSecundario")
         btn_cancelar.clicked.connect(self.reject)
         row_btn.addWidget(btn_cancelar)
         self.btn_exportar = QPushButton("Exportar")
@@ -111,14 +120,14 @@ class ExportDialog(QDialog):
         for cliente in M.listar_clientes(self.conn):
             node_c = QTreeWidgetItem([cliente.nome, ""])
             node_c.setCheckState(0, Qt.CheckState.Unchecked)
-            node_c.setForeground(0, QColor("#1080C0"))
+            node_c.setForeground(0, QColor("#9CDCFE"))
             node_c.setFont(0, QFont("Segoe UI", 10, QFont.Weight.Bold))
             node_c.setData(0, Qt.ItemDataRole.UserRole, {"tipo": "cliente", "id": cliente.id})
 
             for projeto in M.listar_projetos(self.conn, cliente.id):
                 node_p = QTreeWidgetItem([f"[{projeto.tipo}] {projeto.nome}", ""])
                 node_p.setCheckState(0, Qt.CheckState.Unchecked)
-                node_p.setForeground(0, QColor("#6B6B00"))
+                node_p.setForeground(0, QColor("#DCDCAA"))
                 node_p.setData(0, Qt.ItemDataRole.UserRole, {"tipo": "projeto", "id": projeto.id})
 
                 for regra in M.listar_regras(self.conn, projeto.id):
@@ -129,9 +138,12 @@ class ExportDialog(QDialog):
                         str(len(versoes)),
                     ])
                     node_r.setCheckState(0, Qt.CheckState.Unchecked)
+                    node_r.setForeground(0, QColor("#D4D4D4"))
                     node_r.setData(0, Qt.ItemDataRole.UserRole, {
-                        "tipo": "regra", "id": regra.id,
+                        "tipo": "regra",
+                        "id": regra.id,
                         "numero": regra.numero,
+                        "descricao": regra.descricao or "",
                         "cliente": cliente.nome,
                         "projeto": projeto.nome,
                     })
@@ -148,9 +160,7 @@ class ExportDialog(QDialog):
             return
         self.tree.blockSignals(True)
         estado = item.checkState(0)
-        # Para baixo: propaga aos filhos
         self._set_filhos(item, estado)
-        # Para cima: atualiza pai
         pai = item.parent()
         while pai:
             self._atualizar_pai(pai)
@@ -252,8 +262,13 @@ class ExportDialog(QDialog):
                 para_exportar = [v for v in versoes if v.atual] or [versoes[0]]
             elif opcao_versao == "Mais recente":
                 para_exportar = [versoes[0]]
-            else:  # Todas
+            else:
                 para_exportar = versoes
+
+            desc_sanitizada = _sanitizar(dados["descricao"])
+            base_nome = dados["numero"]
+            if desc_sanitizada:
+                base_nome += f" - {desc_sanitizada}"
 
             for versao in para_exportar:
                 try:
@@ -264,7 +279,7 @@ class ExportDialog(QDialog):
                     pasta_dest.mkdir(parents=True, exist_ok=True)
 
                     sufixo = f"_v{versao.numero}" if opcao_versao == "Todas as versões" else ""
-                    nome_arquivo = f"{dados['numero']}{sufixo}{ext}"
+                    nome_arquivo = f"{base_nome}{sufixo}{ext}"
                     (pasta_dest / nome_arquivo).write_text(versao.conteudo, encoding="utf-8")
                     exportados += 1
                 except Exception as e:
@@ -280,28 +295,46 @@ class ExportDialog(QDialog):
 
     def _aplicar_estilo(self):
         self.setStyleSheet("""
-            QDialog, QWidget { background-color: #FAFAFA; color: #1E1E1E; }
+            QDialog, QWidget {
+                background-color: #1E1E1E;
+                color: #D4D4D4;
+            }
             QTreeWidget {
-                background-color: #FFFFFF;
-                border: 1px solid #CCC;
+                background-color: #252526;
+                border: 1px solid #444;
                 font-family: Segoe UI;
                 font-size: 12px;
             }
-            QTreeWidget::item:selected { background-color: #ADD6FF; color: #000; }
-            QTreeWidget::item:hover    { background-color: #EEF5FF; }
+            QTreeWidget::item:selected { background-color: #094771; }
+            QTreeWidget::item:hover    { background-color: #2A2D2E; }
             QHeaderView::section {
-                background-color: #F3F3F3; color: #555;
-                border: none; padding: 2px 4px; font-size: 11px;
+                background-color: #2D2D2D;
+                color: #858585;
+                border: none;
+                padding: 2px 4px;
+                font-size: 11px;
             }
             QLineEdit, QComboBox {
-                background-color: #FFF; border: 1px solid #CCC;
-                color: #1E1E1E; padding: 3px 6px; border-radius: 2px;
+                background-color: #3C3C3C;
+                border: 1px solid #555;
+                color: #D4D4D4;
+                padding: 3px 6px;
+                border-radius: 2px;
             }
+            QCheckBox { color: #D4D4D4; }
             QPushButton {
-                background-color: #0E639C; color: white;
-                border: none; padding: 5px 14px; border-radius: 2px;
+                background-color: #0E639C;
+                color: white;
+                border: none;
+                padding: 5px 14px;
+                border-radius: 2px;
             }
             QPushButton:hover    { background-color: #1177BB; }
-            QPushButton:disabled { background-color: #AAA; color: #EEE; }
-            QCheckBox { color: #1E1E1E; }
+            QPushButton:disabled { background-color: #444; color: #666; }
+            QPushButton#btnSecundario {
+                background-color: #3C3C3C;
+                color: #D4D4D4;
+                border: 1px solid #555;
+            }
+            QPushButton#btnSecundario:hover { background-color: #4A4A4A; }
         """)
