@@ -52,6 +52,97 @@ def save_active_theme(name: str):
     THEMES_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def gerar_stylesheet_ui(tema: dict) -> str:
+    u = tema.get("ui", {})
+    ab  = u.get("app_background",     "#F0F0F0")
+    pb  = u.get("panel_background",   "#FAFAFA")
+    tb  = u.get("tree_background",    "#FFFFFF")
+    mb  = u.get("menubar_background", "#E8E8E8")
+    tx  = u.get("text",               "#1E1E1E")
+    mt  = u.get("text_muted",         "#666666")
+    bd  = u.get("border",             "#CCCCCC")
+    sel = u.get("item_selected",      "#ADD6FF")
+    hov = u.get("item_hover",         "#E5EEF8")
+    inp = u.get("input_background",   "#FFFFFF")
+    bp  = u.get("button_primary",     "#0E639C")
+    bt  = u.get("button_text",        "#FFFFFF")
+    sp  = u.get("splitter",           "#CCCCCC")
+    sh  = u.get("scrollbar_handle",   "#BBBBBB")
+
+    return f"""
+        QMainWindow, QWidget {{
+            background-color: {ab};
+            color: {tx};
+        }}
+        QMenuBar {{
+            background-color: {mb};
+            color: {tx};
+        }}
+        QMenuBar::item:selected {{ background: {sel}; }}
+        QMenu {{
+            background-color: {pb};
+            color: {tx};
+            border: 1px solid {bd};
+        }}
+        QMenu::item:selected {{ background-color: {sel}; }}
+        QTreeWidget {{
+            background-color: {tb};
+            color: {tx};
+            border: none;
+            font-family: Segoe UI;
+            font-size: 12px;
+        }}
+        QTreeWidget::item:selected {{ background-color: {sel}; color: {tx}; }}
+        QTreeWidget::item:hover    {{ background-color: {hov}; }}
+        QHeaderView::section {{
+            background-color: {pb};
+            color: {mt};
+            border: none;
+            padding: 2px 4px;
+        }}
+        QComboBox, QLineEdit, QTextEdit {{
+            background-color: {inp};
+            border: 1px solid {bd};
+            color: {tx};
+            padding: 2px 4px;
+            border-radius: 2px;
+        }}
+        QComboBox:disabled, QLineEdit:disabled, QTextEdit:disabled {{
+            color: {mt};
+            border-color: {bd};
+        }}
+        QPushButton {{
+            background-color: {bp};
+            color: {bt};
+            border: none;
+            padding: 4px 10px;
+            border-radius: 2px;
+        }}
+        QPushButton:hover   {{ background-color: #1177BB; }}
+        QPushButton:pressed {{ background-color: #0A4F82; }}
+        QPushButton:disabled {{ background-color: {bd}; color: {mt}; }}
+        QLabel {{ font-family: Segoe UI; color: {tx}; }}
+        QCheckBox {{ color: {tx}; }}
+        QSplitter::handle {{ background-color: {sp}; }}
+        QScrollBar:vertical {{
+            background: {ab};
+            width: 10px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: {sh};
+            border-radius: 4px;
+        }}
+        QScrollBar:horizontal {{
+            background: {ab};
+            height: 10px;
+        }}
+        QScrollBar::handle:horizontal {{
+            background: {sh};
+            border-radius: 4px;
+        }}
+    """
+
+
 class LSPLexer(QsciLexerCustom):
     def __init__(self, parent=None, theme_name: str = None):
         super().__init__(parent)
