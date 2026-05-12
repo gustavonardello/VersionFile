@@ -8,30 +8,63 @@ THEMES_PATH = data_path() / "config" / "themes.json"
 
 # Estilos (índices QScintilla)
 STYLE_DEFAULT    = 0
-STYLE_KEYWORD    = 1
-STYLE_KEYWORD2   = 2
-STYLE_TYPE       = 3
-STYLE_NUMBER     = 4
-STYLE_STRING     = 5
-STYLE_COMMENT    = 6
-STYLE_OPERATOR   = 7
-STYLE_IDENTIFIER = 8
+STYLE_KEYWORD    = 1   # palavras-chave de controle/estrutura (azul)
+STYLE_FUNCTION   = 2   # funções/métodos chamados com () (roxo)
+STYLE_TYPE       = 3   # tipos de dados: alfa, numero, data... (teal)
+STYLE_NUMBER     = 4   # literais numéricos (verde claro)
+STYLE_STRING     = 5   # strings entre aspas (laranja)
+STYLE_COMMENT    = 6   # comentários @ ... @ ou @ ... \n (verde)
+STYLE_OPERATOR   = 7   # operadores e pontuação
+STYLE_IDENTIFIER = 8   # variáveis e identificadores (azul claro)
+STYLE_CONSTANT   = 9   # constantes: cverdadeiro, cfalso (amarelo)
 
-# Palavras-chave LSP
+# --- Palavras-chave do grammar oficial (llutti/vscode-language-lsp) ---
+
+# Controle de fluxo e estrutura
 KEYWORDS = {
-    "definir", "funcao", "se", "senao", "senaose", "enquanto", "para",
-    "retornar", "retorne", "inicio", "fim", "fimse", "fimenquanto",
-    "fimpara", "fimfuncao", "nao", "e", "ou", "verdadeiro", "falso",
-    "vazio", "interromper", "continuar", "chamar",
+    "se", "senao", "senaose", "enquanto", "para", "continue", "pare",
+    "vapara", "vaparacampo", "vaparapagina",
+    "definir", "funcao", "retorna", "erro",
+    "inicio", "fim", "end", "regra", "tabela",
+    "iniciartransacao", "desfazertransacao", "finalizartransacao",
+    "chamarfuncao", "mensagem",
+    "e", "ou", "nao",
 }
 
-KEYWORDS2 = {
+# Tipos de dados primitivos
+TYPES = {
+    "alfa", "numero", "data", "cursor", "lista", "tabela", "logico",
+}
+
+# Constantes booleanas
+CONSTANTS = {
+    "cverdadeiro", "cfalso",
+}
+
+# Funções built-in conhecidas (além da detecção automática por `(`)
+BUILTIN_FUNCTIONS = {
+    # SQL / ExecSQL
+    "execsql", "execsqlex", "sql_definircomando",
+    # Métodos de cursor/tabela (acessados via .)
+    "abrircursor", "achou", "fecharcursor", "naoachou", "proximo",
+    "sql", "usaabrangencia", "adicionar", "adicionarcampo",
+    "anterior", "cancelar", "chave", "definircampos", "editar",
+    "editarchave", "efetivarcampos", "excluir", "fda", "gravar",
+    "ida", "inserir", "limpar", "numreg", "primeiro", "qtdregistros",
+    "setanumreg", "setarchave", "ultimo", "vaiparachave",
+    # Funções de string
+    "copiarparte", "tamanho", "maiusculo", "minusculo", "remover",
+    "substituir", "posicao", "converter", "formatar", "concatenar",
+    # Funções de data/número
+    "hoje", "agora", "ano", "mes", "dia", "hora", "minuto",
+    "arredondar", "truncar", "absoluto", "potencia", "raiz",
+    # Conversão
+    "alfaparanumero", "numeroparaalfa", "dataparaalfa", "alfaparadata",
+    # I/O
     "imprimir", "limpar", "ler", "abrir", "fechar", "executar",
     "existearquivo", "copiar", "mover", "deletar",
-}
-
-TYPES = {
-    "Alfa", "Numero", "Data", "Logico", "Cursor",
+    # Lista
+    "tamanholista", "adicionarlista", "removerlista", "limparlista",
 }
 
 
@@ -160,21 +193,21 @@ class LSPLexer(QsciLexerCustom):
         style_map = {
             STYLE_DEFAULT:    (t["foreground"],  t["background"], False),
             STYLE_KEYWORD:    (t["keyword"],     t["background"], True),
-            STYLE_KEYWORD2:   (t["keyword2"],    t["background"], True),
+            STYLE_FUNCTION:   (t["function"],    t["background"], False),
             STYLE_TYPE:       (t["type"],        t["background"], True),
             STYLE_NUMBER:     (t["number"],      t["background"], False),
             STYLE_STRING:     (t["string"],      t["background"], False),
             STYLE_COMMENT:    (t["comment"],     t["background"], False),
             STYLE_OPERATOR:   (t["operator"],    t["background"], False),
             STYLE_IDENTIFIER: (t["identifier"],  t["background"], False),
+            STYLE_CONSTANT:   (t["constant"],    t["background"], True),
         }
 
         for style, (fg, bg, bold) in style_map.items():
             f = QFont("Consolas", 10)
             f.setBold(bold)
             self.setColor(QColor(fg), style)
-            setPaperOf = QColor(bg)
-            self.setPaper(setPaperOf, style)
+            self.setPaper(QColor(bg), style)
             self.setFont(f, style)
 
     def apply_theme(self, theme_name: str):
@@ -190,13 +223,14 @@ class LSPLexer(QsciLexerCustom):
         names = {
             STYLE_DEFAULT:    "Default",
             STYLE_KEYWORD:    "Keyword",
-            STYLE_KEYWORD2:   "Keyword2",
+            STYLE_FUNCTION:   "Function",
             STYLE_TYPE:       "Type",
             STYLE_NUMBER:     "Number",
             STYLE_STRING:     "String",
             STYLE_COMMENT:    "Comment",
             STYLE_OPERATOR:   "Operator",
             STYLE_IDENTIFIER: "Identifier",
+            STYLE_CONSTANT:   "Constant",
         }
         return names.get(style, "")
 
@@ -212,16 +246,19 @@ class LSPLexer(QsciLexerCustom):
         while i < len(text):
             ch = text[i]
 
-            # Comentário linha (// ou @)
-            if ch == '/' and i + 1 < len(text) and text[i + 1] == '/':
-                j = i
-                while j < len(text) and text[j] != '\n':
+            # Comentário: @ ... @ (inline) ou @ ... \n (até fim de linha)
+            if ch == '@':
+                j = i + 1
+                while j < len(text) and text[j] != '@' and text[j] != '\n':
                     j += 1
+                if j < len(text) and text[j] == '@':
+                    j += 1  # inclui o @ de fechamento
                 self.setStyling(j - i, STYLE_COMMENT)
                 i = j
                 continue
 
-            if ch == '@':
+            # Comentário linha: // ...
+            if ch == '/' and i + 1 < len(text) and text[i + 1] == '/':
                 j = i
                 while j < len(text) and text[j] != '\n':
                     j += 1
@@ -242,21 +279,15 @@ class LSPLexer(QsciLexerCustom):
                 continue
 
             # Número
-            if ch.isdigit() or (ch == '-' and i + 1 < len(text) and text[i + 1].isdigit()):
-                j = i + 1 if ch == '-' else i
+            if ch.isdigit():
+                j = i + 1
                 while j < len(text) and (text[j].isdigit() or text[j] == '.'):
                     j += 1
                 self.setStyling(j - i, STYLE_NUMBER)
                 i = j
                 continue
 
-            # Operadores
-            if ch in '+-*/=<>!&|%()[]{}.,;:':
-                self.setStyling(1, STYLE_OPERATOR)
-                i += 1
-                continue
-
-            # Identificadores e palavras-chave
+            # Identificador, palavra-chave, tipo, constante ou função
             if ch.isalpha() or ch == '_':
                 j = i
                 while j < len(text) and (text[j].isalnum() or text[j] == '_'):
@@ -266,13 +297,28 @@ class LSPLexer(QsciLexerCustom):
 
                 if word_lower in KEYWORDS:
                     self.setStyling(j - i, STYLE_KEYWORD)
-                elif word_lower in KEYWORDS2:
-                    self.setStyling(j - i, STYLE_KEYWORD2)
-                elif word in TYPES:
+                elif word_lower in TYPES:
                     self.setStyling(j - i, STYLE_TYPE)
+                elif word_lower in CONSTANTS:
+                    self.setStyling(j - i, STYLE_CONSTANT)
+                elif word_lower in BUILTIN_FUNCTIONS:
+                    self.setStyling(j - i, STYLE_FUNCTION)
                 else:
-                    self.setStyling(j - i, STYLE_IDENTIFIER)
+                    # Detecta chamada de função: identificador seguido de (
+                    k = j
+                    while k < len(text) and text[k] in ' \t':
+                        k += 1
+                    if k < len(text) and text[k] == '(':
+                        self.setStyling(j - i, STYLE_FUNCTION)
+                    else:
+                        self.setStyling(j - i, STYLE_IDENTIFIER)
                 i = j
+                continue
+
+            # Operadores e pontuação
+            if ch in '+-*/=<>!&|%()[]{}.,;:':
+                self.setStyling(1, STYLE_OPERATOR)
+                i += 1
                 continue
 
             self.setStyling(1, STYLE_DEFAULT)

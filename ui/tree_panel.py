@@ -386,6 +386,7 @@ class TreePanel(QWidget):
                     ids_novos_clientes={proj["cliente_id"]} if proj else set(),
                     ids_novos_projetos={projeto_id},
                 )
+                self._selecionar_regra(regra.id)
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
 
@@ -409,6 +410,19 @@ class TreePanel(QWidget):
                 )
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
+
+    def _selecionar_regra(self, regra_id: int):
+        """Seleciona o item da regra na árvore, disparando abertura no editor."""
+        for i in range(self.tree.topLevelItemCount()):
+            item_c = self.tree.topLevelItem(i)
+            for j in range(item_c.childCount()):
+                item_p = item_c.child(j)
+                for k in range(item_p.childCount()):
+                    item_r = item_p.child(k)
+                    if self._dados(item_r).get("id") == regra_id:
+                        self.tree.setCurrentItem(item_r)
+                        self.tree.scrollToItem(item_r)
+                        return
 
     def _excluir_regra(self, regra_id):
         if QMessageBox.question(self, "Confirmar", "Excluir regra e todas as versões?") \
