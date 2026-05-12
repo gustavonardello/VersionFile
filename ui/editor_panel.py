@@ -405,7 +405,13 @@ class EditorPanel(QWidget):
             self.campo_notas.toPlainText(),
         )
         num = self._versao_atual.numero
+        pos = self.editor.getCursorPosition()
+        scroll_h = self.editor.horizontalScrollBar().value()
+        scroll_v = self.editor.verticalScrollBar().value()
         self._recarregar_versoes()
+        self.editor.setCursorPosition(*pos)
+        self.editor.horizontalScrollBar().setValue(scroll_h)
+        self.editor.verticalScrollBar().setValue(scroll_v)
         self.label_info.setText(f"v{num}  |  Salvo automaticamente")
 
     def _nova_versao(self):
