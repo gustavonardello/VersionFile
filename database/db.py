@@ -39,7 +39,7 @@ def _migrar(conn):
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
                 nome        TEXT NOT NULL,
-                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra')),
+                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra', 'Webservice', 'Relatório')),
                 descricao   TEXT,
                 criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                 UNIQUE(cliente_id, nome)
@@ -48,6 +48,32 @@ def _migrar(conn):
         conn.execute("""
             INSERT INTO projetos_new (id, cliente_id, nome, tipo, criado_em)
             SELECT id, cliente_id, nome, tipo, criado_em FROM projetos
+        """)
+        conn.execute("DROP TABLE projetos")
+        conn.execute("ALTER TABLE projetos_new RENAME TO projetos")
+        conn.commit()
+        conn.execute("PRAGMA foreign_keys = ON")
+
+    # Migração: adicionar tipos 'Webservice' e 'Relatório' ao CHECK de projetos
+    create_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='projetos'"
+    ).fetchone()
+    if create_sql and "'Webservice'" not in create_sql[0]:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("""
+            CREATE TABLE projetos_new (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+                nome        TEXT NOT NULL,
+                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra', 'Webservice', 'Relatório')),
+                descricao   TEXT,
+                criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                UNIQUE(cliente_id, nome)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO projetos_new (id, cliente_id, nome, tipo, descricao, criado_em)
+            SELECT id, cliente_id, nome, tipo, descricao, criado_em FROM projetos
         """)
         conn.execute("DROP TABLE projetos")
         conn.execute("ALTER TABLE projetos_new RENAME TO projetos")
@@ -68,7 +94,7 @@ def initialize_db():
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
                 nome        TEXT NOT NULL,
-                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra')),
+                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra', 'Webservice', 'Relatório')),
                 descricao   TEXT,
                 criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                 UNIQUE(cliente_id, nome)
