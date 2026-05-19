@@ -11,7 +11,12 @@ from PyQt6.Qsci import QsciScintilla
 from PyQt6.QtGui import QColor, QFont
 
 import database.models as M
-from core.highlighter import LSPLexer, load_theme
+from core.highlighter import (
+    LSPLexer, load_theme,
+    STYLE_DEFAULT, STYLE_KEYWORD, STYLE_FUNCTION, STYLE_TYPE,
+    STYLE_NUMBER, STYLE_STRING, STYLE_COMMENT, STYLE_OPERATOR,
+    STYLE_IDENTIFIER, STYLE_CONSTANT,
+)
 from core.version_manager import diff_versoes, sugerir_tipo_para_regra
 from ui.dialogs import DialogVersao
 from ui.diff_viewer import DiffViewer
@@ -48,12 +53,28 @@ class EditorPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 0, 4)
 
+        self._bg_mode = "black"  # "black" | "white"
+
         # Barra superior
         barra = QHBoxLayout()
         self.label_regra = QLabel("Nenhuma regra selecionada")
         self.label_regra.setStyleSheet("font-weight: bold; font-size: 13px;")
         barra.addWidget(self.label_regra)
         barra.addStretch()
+
+        self.btn_bg_black = QPushButton()
+        self.btn_bg_black.setFixedSize(18, 18)
+        self.btn_bg_black.setToolTip("Fundo preto")
+        self.btn_bg_black.clicked.connect(lambda: self._set_editor_background("black"))
+        barra.addWidget(self.btn_bg_black)
+
+        self.btn_bg_white = QPushButton()
+        self.btn_bg_white.setFixedSize(18, 18)
+        self.btn_bg_white.setToolTip("Fundo branco")
+        self.btn_bg_white.clicked.connect(lambda: self._set_editor_background("white"))
+        barra.addWidget(self.btn_bg_white)
+
+        self._atualizar_estilo_botoes_bg()
         layout.addLayout(barra)
 
         # Splitter: editor | painel versões
@@ -311,6 +332,83 @@ class EditorPanel(QWidget):
             QScrollBar::add-line:horizontal,
             QScrollBar::sub-line:horizontal { width: 0px; }
         """)
+
+    def _atualizar_estilo_botoes_bg(self):
+        ativo  = "2px solid #CCCCCC"
+        inativo = "2px solid #555555"
+        borda_black = ativo  if self._bg_mode == "black" else inativo
+        borda_white = ativo  if self._bg_mode == "white" else inativo
+        self.btn_bg_black.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #1E1E1E;
+                border: {borda_black};
+                border-radius: 9px;
+                padding: 0;
+            }}
+            QPushButton:hover {{ border-color: #AAAAAA; }}
+        """)
+        self.btn_bg_white.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #FFFFFF;
+                border: {borda_white};
+                border-radius: 9px;
+                padding: 0;
+            }}
+            QPushButton:hover {{ border-color: #AAAAAA; }}
+        """)
+
+    def _set_editor_background(self, mode: str):
+        if mode == self._bg_mode:
+            return
+        self._bg_mode = mode
+        t = self._lexer._theme
+        if mode == "white":
+            bg         = QColor("#FFFFFF")
+            caret_fg   = QColor("#000000")
+            caret_line = QColor("#F0F0F0")
+            margin_bg  = QColor("#EEEEEE")
+            margin_fg  = QColor("#555555")
+            fg_map = {
+                STYLE_DEFAULT:    "#1E1E1E",  # texto padrão
+                STYLE_KEYWORD:    "#0000FF",  # azul forte
+                STYLE_FUNCTION:   "#795E26",  # marrom/dourado
+                STYLE_TYPE:       "#267F99",  # teal escuro
+                STYLE_NUMBER:     "#098658",  # verde escuro
+                STYLE_STRING:     "#A31515",  # vermelho escuro
+                STYLE_COMMENT:    "#008000",  # verde
+                STYLE_OPERATOR:   "#1E1E1E",  # preto
+                STYLE_IDENTIFIER: "#1E1E1E",  # preto
+                STYLE_CONSTANT:   "#0070C1",  # azul médio
+            }
+        else:
+            bg         = QColor(t["background"])
+            caret_fg   = QColor("#FFFFFF")
+            caret_line = QColor(t["caret_line"])
+            margin_bg  = QColor(t["margin_background"])
+            margin_fg  = QColor(t["margin_foreground"])
+            fg_map = {
+                STYLE_DEFAULT:    t["foreground"],
+                STYLE_KEYWORD:    t["keyword"],
+                STYLE_FUNCTION:   t["function"],
+                STYLE_TYPE:       t["type"],
+                STYLE_NUMBER:     t["number"],
+                STYLE_STRING:     t["string"],
+                STYLE_COMMENT:    t["comment"],
+                STYLE_OPERATOR:   t["operator"],
+                STYLE_IDENTIFIER: t["identifier"],
+                STYLE_CONSTANT:   t["constant"],
+            }
+
+        self._lexer.setDefaultPaper(bg)
+        self._lexer.setDefaultColor(QColor(fg_map[0]))
+        for style, fg in fg_map.items():
+            self._lexer.setPaper(bg, style)
+            self._lexer.setColor(QColor(fg), style)
+        self.editor.setCaretForegroundColor(caret_fg)
+        self.editor.setCaretLineBackgroundColor(caret_line)
+        self.editor.setMarginsBackgroundColor(margin_bg)
+        self.editor.setMarginsForegroundColor(margin_fg)
+        self._atualizar_estilo_botoes_bg()
 
     def salvar_se_pendente(self):
         """Salva imediatamente se houver um autosave pendente ou versão aberta."""
