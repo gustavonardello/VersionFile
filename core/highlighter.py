@@ -239,8 +239,15 @@ class LSPLexer(QsciLexerCustom):
         if not editor:
             return
 
-        text = editor.text()[start:end]
+        # setUtf8(True) → start/end são offsets de BYTES UTF-8, não de caracteres.
+        # Precisamos trabalhar em bytes para que setStyling receba comprimentos corretos.
+        source_bytes = editor.text().encode('utf-8')
+        text = source_bytes[start:end].decode('utf-8', errors='replace')
+
         self.startStyling(start)
+
+        def emit(token: str, style: int):
+            self.setStyling(len(token.encode('utf-8')), style)
 
         i = 0
         while i < len(text):
@@ -253,7 +260,7 @@ class LSPLexer(QsciLexerCustom):
                     j += 1
                 if j < len(text) and text[j] == '@':
                     j += 1  # inclui o @ de fechamento
-                self.setStyling(j - i, STYLE_COMMENT)
+                emit(text[i:j], STYLE_COMMENT)
                 i = j
                 continue
 
@@ -262,7 +269,7 @@ class LSPLexer(QsciLexerCustom):
                 j = i
                 while j < len(text) and text[j] != '\n':
                     j += 1
-                self.setStyling(j - i, STYLE_COMMENT)
+                emit(text[i:j], STYLE_COMMENT)
                 i = j
                 continue
 
@@ -273,8 +280,9 @@ class LSPLexer(QsciLexerCustom):
                     if text[j] == '\\':
                         j += 1
                     j += 1
-                j += 1
-                self.setStyling(j - i, STYLE_STRING)
+                if j < len(text):
+                    j += 1
+                emit(text[i:j], STYLE_STRING)
                 i = j
                 continue
 
@@ -283,7 +291,7 @@ class LSPLexer(QsciLexerCustom):
                 j = i + 1
                 while j < len(text) and (text[j].isdigit() or text[j] == '.'):
                     j += 1
-                self.setStyling(j - i, STYLE_NUMBER)
+                emit(text[i:j], STYLE_NUMBER)
                 i = j
                 continue
 
@@ -296,30 +304,30 @@ class LSPLexer(QsciLexerCustom):
                 word_lower = word.lower()
 
                 if word_lower in KEYWORDS:
-                    self.setStyling(j - i, STYLE_KEYWORD)
+                    emit(word, STYLE_KEYWORD)
                 elif word_lower in TYPES:
-                    self.setStyling(j - i, STYLE_TYPE)
+                    emit(word, STYLE_TYPE)
                 elif word_lower in CONSTANTS:
-                    self.setStyling(j - i, STYLE_CONSTANT)
+                    emit(word, STYLE_CONSTANT)
                 elif word_lower in BUILTIN_FUNCTIONS:
-                    self.setStyling(j - i, STYLE_FUNCTION)
+                    emit(word, STYLE_FUNCTION)
                 else:
                     # Detecta chamada de função: identificador seguido de (
                     k = j
                     while k < len(text) and text[k] in ' \t':
                         k += 1
                     if k < len(text) and text[k] == '(':
-                        self.setStyling(j - i, STYLE_FUNCTION)
+                        emit(word, STYLE_FUNCTION)
                     else:
-                        self.setStyling(j - i, STYLE_IDENTIFIER)
+                        emit(word, STYLE_IDENTIFIER)
                 i = j
                 continue
 
             # Operadores e pontuação
             if ch in '+-*/=<>!&|%()[]{}.,;:':
-                self.setStyling(1, STYLE_OPERATOR)
+                emit(ch, STYLE_OPERATOR)
                 i += 1
                 continue
 
-            self.setStyling(1, STYLE_DEFAULT)
+            emit(ch, STYLE_DEFAULT)
             i += 1

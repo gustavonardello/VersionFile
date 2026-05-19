@@ -26,9 +26,11 @@ class DialogCliente(QDialog):
 
 class DialogProjeto(QDialog):
     _PLACEHOLDERS = {
-        "DID":     "ex: 2425",
-        "Projeto": "ex: RH, Folha de Pagamento",
-        "Regra":   "ex: Sistema, Módulo",
+        "DID":        "ex: 2425",
+        "Projeto":    "ex: RH, Folha de Pagamento",
+        "Regra":      "ex: Sistema, Módulo",
+        "Webservice": "ex: API de Integração",
+        "Relatório":  "ex: Balancete, Extrato",
     }
 
     def __init__(self, parent=None, nome_atual: str = "", tipo_atual: str = "DID", descricao_atual: str = ""):
@@ -40,7 +42,7 @@ class DialogProjeto(QDialog):
         layout.setSpacing(10)
 
         self.campo_tipo = QComboBox()
-        self.campo_tipo.addItems(["DID", "Projeto", "Regra"])
+        self.campo_tipo.addItems(["DID", "Projeto", "Regra", "Webservice", "Relatório"])
         self.campo_tipo.setCurrentText(tipo_atual)
         layout.addRow("Tipo:", self.campo_tipo)
 
@@ -114,6 +116,107 @@ class DialogRegra(QDialog):
     @property
     def numero(self) -> str:
         return self.campo_numero.text().strip()
+
+    @property
+    def descricao(self) -> str:
+        return self.campo_descricao.text().strip()
+
+
+# Estrutura fixa de seções e sub-seções de um Relatório
+ESTRUTURA_RELATORIO: dict[str, list[str]] = {
+    "Titulo":            ["Antes de Imprimir", "Depois de Imprimir"],
+    "Cabeçalho":         ["Antes de Imprimir", "Depois de Imprimir"],
+    "Cabeçalho Colunas": ["Antes de Imprimir", "Depois de Imprimir"],
+    "Subtitulo":         ["Antes de Imprimir", "Depois de Imprimir"],
+    "Detalhe":           ["Antes de Imprimir", "Depois de Imprimir"],
+    "Subtotal":          ["Antes de Imprimir", "Depois de Imprimir"],
+    "Total Geral":       ["Antes de Imprimir", "Depois de Imprimir"],
+    "Rodapé Titulo":     ["Antes de Imprimir", "Depois de Imprimir"],
+    "Rodapé Cabeçalho":  ["Antes de Imprimir", "Depois de Imprimir"],
+    "Adicional":         ["Antes de Imprimir", "Depois de Imprimir"],
+    "Página de Fundo":   ["Antes de Imprimir", "Depois de Imprimir"],
+    "Pré-Seleção":       ["Antes de Imprimir", "Depois de Imprimir"],
+    "Seleção":           [],
+    "Inicialização":     [],
+    "Finalização":       [],
+    "Funções Globais":   [],
+    "Imprimir Página":   [],
+    "Campo Descrição":   ["Na Impressão"],
+    "Campo Cadastro":    ["Na Impressão"],
+    "Campo Fórmula":     ["Na Impressão"],
+    "Campo Totalizador": ["Na Impressão"],
+    "Campo Sistema":     ["Na Impressão"],
+}
+
+
+class DialogRegraRelatorio(QDialog):
+    def __init__(self, parent=None, numero_atual: str = "", descricao_atual: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle("Seção do Relatório")
+        self.setMinimumWidth(360)
+
+        layout = QFormLayout(self)
+        layout.setSpacing(10)
+
+        self.combo_secao = QComboBox()
+        self.combo_secao.addItems(list(ESTRUTURA_RELATORIO.keys()))
+        layout.addRow("Seção:", self.combo_secao)
+
+        self._label_subsecao = QLabel("Evento:")
+        self.combo_subsecao = QComboBox()
+        layout.addRow(self._label_subsecao, self.combo_subsecao)
+
+        self.campo_descricao = QLineEdit(descricao_atual)
+        self.campo_descricao.setPlaceholderText("Descrição opcional")
+        layout.addRow("Descrição:", self.campo_descricao)
+
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        botoes.accepted.connect(self.accept)
+        botoes.rejected.connect(self.reject)
+        layout.addRow(botoes)
+
+        self.combo_secao.currentTextChanged.connect(self._atualizar_subsecao)
+
+        # Restaura seleção a partir do número salvo
+        if numero_atual and " / " in numero_atual:
+            secao, subsecao = numero_atual.split(" / ", 1)
+            self.combo_secao.setCurrentText(secao)
+            self._atualizar_subsecao(secao)
+            self.combo_subsecao.setCurrentText(subsecao)
+        elif numero_atual:
+            self.combo_secao.setCurrentText(numero_atual)
+            self._atualizar_subsecao(numero_atual)
+        else:
+            self._atualizar_subsecao(self.combo_secao.currentText())
+
+        self.setStyleSheet("""
+            QDialog { background-color: #1E1E1E; color: #D4D4D4; }
+            QLabel  { color: #D4D4D4; font-family: Segoe UI; }
+            QLineEdit, QComboBox {
+                background-color: #3C3C3C; border: 1px solid #555;
+                color: #D4D4D4; padding: 4px 8px; border-radius: 4px;
+            }
+            QPushButton {
+                background-color: #0E639C; color: white;
+                border: none; padding: 5px 16px; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #1177BB; }
+        """)
+
+    def _atualizar_subsecao(self, secao: str):
+        subsecoes = ESTRUTURA_RELATORIO.get(secao, [])
+        self.combo_subsecao.clear()
+        self.combo_subsecao.addItems(subsecoes)
+        tem = bool(subsecoes)
+        self._label_subsecao.setVisible(tem)
+        self.combo_subsecao.setVisible(tem)
+
+    @property
+    def numero(self) -> str:
+        secao = self.combo_secao.currentText()
+        if ESTRUTURA_RELATORIO.get(secao):
+            return f"{secao} / {self.combo_subsecao.currentText()}"
+        return secao
 
     @property
     def descricao(self) -> str:

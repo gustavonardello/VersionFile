@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QColor, QPixmap
 import database.models as M
-from ui.dialogs import DialogCliente, DialogProjeto, DialogRegra
+from ui.dialogs import DialogCliente, DialogProjeto, DialogRegra, DialogRegraRelatorio
 from core.paths import base_path, data_path
 
 NODE_CLIENTE = "cliente"
@@ -126,7 +126,11 @@ class TreePanel(QWidget):
                 item_p = _item(label, NODE_PROJETO, projeto.id, projeto.cliente_id)
                 for regra in M.listar_regras(self.conn, projeto.id):
                     desc = f" — {regra.descricao}" if regra.descricao else ""
-                    item_r = _item(f"Regra {regra.numero}{desc}", NODE_REGRA, regra.id, projeto.id)
+                    if projeto.tipo == "Relatório":
+                        label_regra = f"{regra.numero}{desc}"
+                    else:
+                        label_regra = f"Regra {regra.numero}{desc}"
+                    item_r = _item(label_regra, NODE_REGRA, regra.id, projeto.id)
                     item_p.addChild(item_r)
                 item_c.addChild(item_p)
             self.tree.addTopLevelItem(item_c)
@@ -272,8 +276,10 @@ class TreePanel(QWidget):
         menu = QMenu(self)
 
         if item is None:
-            act_novo_cliente = menu.addAction("Novo cliente")
-            act_novo_cliente.triggered.connect(self._novo_cliente)
+            menu.addAction("Novo cliente").triggered.connect(self._novo_cliente)
+            menu.addSeparator()
+            menu.addAction("Expandir tudo").triggered.connect(self.tree.expandAll)
+            menu.addAction("Recolher tudo").triggered.connect(self.tree.collapseAll)
         else:
             d = self._dados(item)
             tipo = d.get("tipo")
@@ -288,6 +294,11 @@ class TreePanel(QWidget):
                 menu.addAction("Excluir cliente").triggered.connect(
                     lambda: self._excluir_cliente(d["id"])
                 )
+                menu.addSeparator()
+                menu.addAction("Novo cliente").triggered.connect(self._novo_cliente)
+                menu.addSeparator()
+                menu.addAction("Expandir tudo").triggered.connect(self.tree.expandAll)
+                menu.addAction("Recolher tudo").triggered.connect(self.tree.collapseAll)
 
             elif tipo == NODE_PROJETO:
                 menu.addAction("Nova regra").triggered.connect(
@@ -307,13 +318,6 @@ class TreePanel(QWidget):
                 menu.addAction("Excluir regra").triggered.connect(
                     lambda: self._excluir_regra(d["id"])
                 )
-
-            menu.addSeparator()
-            menu.addAction("Novo cliente").triggered.connect(self._novo_cliente)
-
-        menu.addSeparator()
-        menu.addAction("Expandir tudo").triggered.connect(self.tree.expandAll)
-        menu.addAction("Recolher tudo").triggered.connect(self.tree.collapseAll)
 
         menu.exec(self.tree.viewport().mapToGlobal(pos))
 
@@ -373,15 +377,17 @@ class TreePanel(QWidget):
             self.carregar()
 
     def _nova_regra(self, projeto_id):
-        dlg = DialogRegra(self)
+        proj = self.conn.execute(
+            "SELECT tipo, cliente_id FROM projetos WHERE id = ?", (projeto_id,)
+        ).fetchone()
+        if proj and proj["tipo"] == "Relatório":
+            dlg = DialogRegraRelatorio(self)
+        else:
+            dlg = DialogRegra(self)
         if dlg.exec() and dlg.numero:
             try:
                 regra = M.criar_regra(self.conn, projeto_id, dlg.numero, dlg.descricao)
                 M.criar_versao(self.conn, regra.id)
-                # Mantém o projeto pai expandido
-                proj = self.conn.execute(
-                    "SELECT cliente_id FROM projetos WHERE id = ?", (projeto_id,)
-                ).fetchone()
                 self.carregar(
                     ids_novos_clientes={proj["cliente_id"]} if proj else set(),
                     ids_novos_projetos={projeto_id},
@@ -396,7 +402,13 @@ class TreePanel(QWidget):
         ).fetchone()
         if not regra:
             return
-        dlg = DialogRegra(self, numero_atual=regra["numero"], descricao_atual=regra["descricao"] or "")
+        proj_tipo = self.conn.execute(
+            "SELECT tipo FROM projetos WHERE id = ?", (regra["projeto_id"],)
+        ).fetchone()
+        if proj_tipo and proj_tipo["tipo"] == "Relatório":
+            dlg = DialogRegraRelatorio(self, numero_atual=regra["numero"], descricao_atual=regra["descricao"] or "")
+        else:
+            dlg = DialogRegra(self, numero_atual=regra["numero"], descricao_atual=regra["descricao"] or "")
         dlg.setWindowTitle("Editar Regra")
         if dlg.exec() and dlg.numero:
             try:

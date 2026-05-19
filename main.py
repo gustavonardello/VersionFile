@@ -1,7 +1,7 @@
 import sys
 import shutil
 from PyQt6.QtWidgets import QApplication
-from database.db import initialize_db, get_connection
+from database.db import initialize_db, get_connection, DB_PATH
 from ui.main_window import MainWindow
 from core.paths import base_path, data_path
 
@@ -19,7 +19,12 @@ def _bootstrap():
 
 def main():
     _bootstrap()
+    db_is_new = not DB_PATH.exists()
     initialize_db()
+    if db_is_new:
+        print(f"Banco de dados criado em: {DB_PATH}")
+    else:
+        print(f"Banco de dados existente preservado: {DB_PATH}")
     conn = get_connection()
 
     app = QApplication(sys.argv)
