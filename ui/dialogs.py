@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QComboBox,
-    QDialogButtonBox, QTextEdit, QLabel, QVBoxLayout, QFrame,
+    QDialogButtonBox, QTextEdit, QLabel, QVBoxLayout, QFrame, QHBoxLayout,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
@@ -307,6 +307,119 @@ class DialogVersao(QDialog):
     @property
     def tipo(self) -> str:
         return self.combo_tipo.currentText()
+
+    @property
+    def notas(self) -> str:
+        return self.campo_notas.toPlainText().strip()
+
+
+_STATUS_CORES = {
+    "Em desenvolvimento": "#569CD6",
+    "Em teste":           "#DCDCAA",
+    "Produção":           "#4EC9B0",
+    "Depreciada":         "#808080",
+}
+
+
+class DialogEditarVersao(QDialog):
+    def __init__(self, parent=None, versao=None):
+        super().__init__(parent)
+        from database.models import TIPOS_VERSAO
+        self.setWindowTitle(f"Editar Versão {versao.numero}" if versao else "Editar Versão")
+        self.setMinimumWidth(380)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        if versao is not None:
+            lbl_num = QLabel(f"Versão  {versao.numero}")
+            lbl_num.setStyleSheet("font-size: 18px; font-weight: bold; color: #D4D4D4;")
+            layout.addWidget(lbl_num)
+
+        # Tipo
+        lbl_tipo = QLabel("Tipo:")
+        lbl_tipo.setStyleSheet("color: #858585; font-size: 11px;")
+        layout.addWidget(lbl_tipo)
+
+        self.combo_tipo = QComboBox()
+        self.combo_tipo.addItems(TIPOS_VERSAO)
+        if versao:
+            self.combo_tipo.setCurrentText(versao.tipo)
+        self.combo_tipo.currentTextChanged.connect(self._atualizar_badge)
+        layout.addWidget(self.combo_tipo)
+
+        self.label_badge = QLabel("")
+        self.label_badge.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(self.label_badge)
+        self._atualizar_badge(self.combo_tipo.currentText())
+
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.Shape.HLine)
+        sep1.setStyleSheet("color: #3A3A3A;")
+        layout.addWidget(sep1)
+
+        # Status
+        lbl_status = QLabel("Status:")
+        lbl_status.setStyleSheet("color: #858585; font-size: 11px;")
+        layout.addWidget(lbl_status)
+
+        self.combo_status = QComboBox()
+        self.combo_status.addItems(list(_STATUS_CORES.keys()))
+        if versao:
+            self.combo_status.setCurrentText(versao.status)
+        layout.addWidget(self.combo_status)
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.HLine)
+        sep2.setStyleSheet("color: #3A3A3A;")
+        layout.addWidget(sep2)
+
+        # Notas
+        lbl_notas = QLabel("Notas (opcional):")
+        lbl_notas.setStyleSheet("color: #858585; font-size: 11px;")
+        layout.addWidget(lbl_notas)
+
+        self.campo_notas = QTextEdit()
+        self.campo_notas.setMaximumHeight(90)
+        self.campo_notas.setPlaceholderText("Descreva o que foi alterado nesta versão...")
+        if versao:
+            self.campo_notas.setPlainText(versao.notas or "")
+        layout.addWidget(self.campo_notas)
+
+        botoes = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        botoes.accepted.connect(self.accept)
+        botoes.rejected.connect(self.reject)
+        layout.addWidget(botoes)
+
+        self.setStyleSheet("""
+            QDialog { background-color: #1E1E1E; color: #D4D4D4; }
+            QLabel  { color: #D4D4D4; font-family: Segoe UI; }
+            QComboBox, QTextEdit {
+                background-color: #3C3C3C; border: 1px solid #555;
+                color: #D4D4D4; padding: 4px 8px; border-radius: 4px;
+            }
+            QPushButton {
+                background-color: #0E639C; color: white;
+                border: none; padding: 5px 16px; border-radius: 4px;
+            }
+            QPushButton:hover { background-color: #1177BB; }
+        """)
+
+    def _atualizar_badge(self, tipo: str):
+        bg, fg = TIPO_CORES.get(tipo, ("#333", "#D4D4D4"))
+        self.label_badge.setText(
+            f'<span style="background-color:{bg}; color:{fg}; '
+            f'padding: 2px 10px; border-radius: 4px; font-size:12px;">'
+            f'&nbsp;{tipo}&nbsp;</span>'
+        )
+
+    @property
+    def tipo(self) -> str:
+        return self.combo_tipo.currentText()
+
+    @property
+    def status(self) -> str:
+        return self.combo_status.currentText()
 
     @property
     def notas(self) -> str:

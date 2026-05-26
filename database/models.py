@@ -173,6 +173,14 @@ def atualizar_versao(conn, versao_id: int, status: str, notas: str):
     conn.commit()
 
 
+def atualizar_meta_versao(conn, versao_id: int, tipo: str, status: str, notas: str):
+    conn.execute(
+        "UPDATE versoes SET tipo = ?, status = ?, notas = ? WHERE id = ?",
+        (tipo, status, notas, versao_id),
+    )
+    conn.commit()
+
+
 def definir_versao_atual(conn, regra_id: int, versao_id: int):
     conn.execute("UPDATE versoes SET atual = 0 WHERE regra_id = ?", (regra_id,))
     conn.execute("UPDATE versoes SET atual = 1 WHERE id = ?", (versao_id,))

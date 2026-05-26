@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QComboBox, QPushButton, QTextEdit, QSplitter,
+    QComboBox, QPushButton, QSplitter,
     QMessageBox, QFileDialog, QFrame, QStackedWidget,
 )
 from PyQt6.QtCore import Qt, QTimer, QObject, QEvent
@@ -18,7 +18,8 @@ from core.highlighter import (
     STYLE_IDENTIFIER, STYLE_CONSTANT,
 )
 from core.version_manager import diff_versoes, sugerir_tipo_para_regra
-from ui.dialogs import DialogVersao
+from core.paths import data_path
+from ui.dialogs import DialogVersao, DialogEditarVersao
 from ui.diff_viewer import DiffViewer
 from ui.version_history import VersionHistory
 
@@ -53,7 +54,7 @@ class EditorPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 0, 4)
 
-        self._bg_mode = "black"  # "black" | "white"
+        self._bg_mode = self._carregar_prefs().get("bg_mode", "black")
 
         # Barra superior
         barra = QHBoxLayout()
@@ -84,6 +85,11 @@ class EditorPanel(QWidget):
         self.editor = QsciScintilla()
         self._setup_editor()
         self.editor.textChanged.connect(self._agendar_autosave)
+        # Restaura o fundo salvo — _setup_editor sempre inicializa com tema escuro
+        if self._bg_mode != "black":
+            modo = self._bg_mode
+            self._bg_mode = "black"
+            self._set_editor_background(modo)
 
         self._tela_vazia = QWidget()
         self._tela_vazia.setStyleSheet("background-color: #1E1E1E;")
@@ -111,42 +117,55 @@ class EditorPanel(QWidget):
         lbl_sec_versao.setObjectName("secLabel")
         pv_layout.addWidget(lbl_sec_versao)
 
+        nav_row = QHBoxLayout()
+        nav_row.setSpacing(4)
+
+        self.btn_versao_ant = QPushButton("‹")
+        self.btn_versao_ant.setObjectName("btnNav")
+        self.btn_versao_ant.setFixedSize(28, 28)
+        self.btn_versao_ant.setToolTip("Versão mais antiga")
+        self.btn_versao_ant.clicked.connect(self._versao_anterior)
+        self.btn_versao_ant.setEnabled(False)
+        nav_row.addWidget(self.btn_versao_ant)
+
         self.combo_versoes = QComboBox()
         self.combo_versoes.currentIndexChanged.connect(self._carregar_versao)
         self.combo_versoes.setEnabled(False)
-        pv_layout.addWidget(self.combo_versoes)
+        nav_row.addWidget(self.combo_versoes, 1)
+
+        self.btn_versao_prox = QPushButton("›")
+        self.btn_versao_prox.setObjectName("btnNav")
+        self.btn_versao_prox.setFixedSize(28, 28)
+        self.btn_versao_prox.setToolTip("Versão mais recente")
+        self.btn_versao_prox.clicked.connect(self._proxima_versao)
+        self.btn_versao_prox.setEnabled(False)
+        nav_row.addWidget(self.btn_versao_prox)
+
+        pv_layout.addLayout(nav_row)
+
+        self.btn_editar_versao = QPushButton("Editar versão")
+        self.btn_editar_versao.clicked.connect(self._editar_versao)
+        self.btn_editar_versao.setEnabled(False)
+        pv_layout.addWidget(self.btn_editar_versao)
+
+        self.label_versao_info = QLabel("")
+        self.label_versao_info.setStyleSheet("font-size: 11px; color: #858585; padding: 0;")
+        pv_layout.addWidget(self.label_versao_info)
 
         self.label_status = QLabel("")
         self.label_status.setTextFormat(Qt.TextFormat.RichText)
         self.label_status.setObjectName("labelStatus")
         pv_layout.addWidget(self.label_status)
 
-        pv_layout.addSpacing(2)
-
-        # --- Seção: Status ---
-        lbl_sec_status = QLabel("STATUS")
-        lbl_sec_status.setObjectName("secLabel")
-        pv_layout.addWidget(lbl_sec_status)
-
-        self.combo_status = QComboBox()
-        self.combo_status.addItems(list(STATUS_CORES.keys()))
-        self.combo_status.currentTextChanged.connect(self._agendar_autosave)
-        self.combo_status.setEnabled(False)
-        pv_layout.addWidget(self.combo_status)
-
-        pv_layout.addSpacing(2)
-
-        # --- Seção: Notas ---
         lbl_sec_notas = QLabel("NOTAS")
         lbl_sec_notas.setObjectName("secLabel")
         pv_layout.addWidget(lbl_sec_notas)
 
-        self.campo_notas = QTextEdit()
-        self.campo_notas.setMaximumHeight(90)
-        self.campo_notas.setPlaceholderText("Descreva as alterações desta versão...")
-        self.campo_notas.textChanged.connect(self._agendar_autosave)
-        self.campo_notas.setEnabled(False)
-        pv_layout.addWidget(self.campo_notas)
+        self.label_notas = QLabel("")
+        self.label_notas.setWordWrap(True)
+        self.label_notas.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.label_notas.setObjectName("labelNotas")
+        pv_layout.addWidget(self.label_notas)
 
         self.btn_salvar_tudo = QPushButton("Salvar  Ctrl+S")
         self.btn_salvar_tudo.setShortcut("Ctrl+S")
@@ -224,6 +243,15 @@ class EditorPanel(QWidget):
                 font-size: 12px;
                 padding: 2px 0;
             }
+            QLabel#labelNotas {
+                font-size: 11px;
+                color: #A0A0A0;
+                padding: 4px 6px;
+                background-color: #2A2A2A;
+                border: 1px solid #3A3A3A;
+                border-radius: 4px;
+                font-style: italic;
+            }
             QComboBox {
                 background-color: #3C3C3C;
                 border: 1px solid #4A4A4A;
@@ -252,6 +280,12 @@ class EditorPanel(QWidget):
                 border-radius: 4px;
                 font-size: 12px;
                 text-align: left;
+            }
+            QPushButton#btnNav {
+                text-align: center;
+                padding: 0;
+                font-size: 16px;
+                font-weight: bold;
             }
             QPushButton:hover { background-color: #4A4A4A; border-color: #6A6A6A; }
             QPushButton:pressed { background-color: #2A2A2A; }
@@ -284,6 +318,23 @@ class EditorPanel(QWidget):
         self.label_info.setStyleSheet("color: #858585; font-size: 11px;")
         barra_inf.addWidget(self.label_info)
         layout.addLayout(barra_inf)
+
+    def _carregar_prefs(self) -> dict:
+        try:
+            p = data_path() / "config" / "ui_prefs.json"
+            if p.exists():
+                return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return {}
+
+    def _salvar_prefs(self, prefs: dict):
+        try:
+            p = data_path() / "config" / "ui_prefs.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps(prefs, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
 
     def _setup_editor(self):
         self._lexer = LSPLexer(self.editor)
@@ -361,6 +412,7 @@ class EditorPanel(QWidget):
         if mode == self._bg_mode:
             return
         self._bg_mode = mode
+        self._salvar_prefs({**self._carregar_prefs(), "bg_mode": mode})
         t = self._lexer._theme
         if mode == "white":
             bg         = QColor("#FFFFFF")
@@ -439,8 +491,9 @@ class EditorPanel(QWidget):
     def _set_acoes_habilitadas(self, habilitado: bool):
         self._stack_editor.setCurrentIndex(1 if habilitado else 0)
         self.combo_versoes.setEnabled(habilitado)
-        self.combo_status.setEnabled(habilitado)
-        self.campo_notas.setEnabled(habilitado)
+        self.btn_versao_ant.setEnabled(False)   # corrigido em _carregar_versao
+        self.btn_versao_prox.setEnabled(False)
+        self.btn_editar_versao.setEnabled(habilitado)
         self.btn_salvar_tudo.setEnabled(habilitado)
         self.btn_nova_versao.setEnabled(habilitado)
         self.btn_marcar_atual.setEnabled(habilitado)
@@ -458,8 +511,11 @@ class EditorPanel(QWidget):
         self.combo_versoes.clear()
         versoes = M.listar_versoes(self.conn, self._regra_id)
         for v in versoes:
-            atual = "  [atual]" if v.atual else ""
-            self.combo_versoes.addItem(f"{v.numero}  ·  {v.tipo}{atual}", userData=v)
+            self.combo_versoes.addItem(str(v.numero), userData=v)
+            idx = self.combo_versoes.count() - 1
+            self.combo_versoes.setItemData(
+                idx, Qt.AlignmentFlag.AlignCenter, Qt.ItemDataRole.TextAlignmentRole
+            )
         self.combo_versoes.blockSignals(False)
         if versoes:
             # Seleciona a versão atual por padrão
@@ -468,9 +524,8 @@ class EditorPanel(QWidget):
             self._carregar_versao(idx)
 
     def _on_focus_changed(self, old, new):
-        """Salva imediatamente quando o foco sai do editor ou das notas."""
-        saiu_do_editor = old in (self.editor, self.campo_notas, self.combo_status)
-        if saiu_do_editor and not self._carregando and self._versao_atual:
+        """Salva imediatamente quando o foco sai do editor."""
+        if old is self.editor and not self._carregando and self._versao_atual:
             self._autosave_timer.stop()
             self._salvar_tudo()
 
@@ -486,22 +541,50 @@ class EditorPanel(QWidget):
         self._autosave_timer.stop()
         self._versao_atual = versao
         self.editor.setText(versao.conteudo)
-        self.combo_status.setCurrentText(versao.status)
-        self.campo_notas.setPlainText(versao.notas or "")
         self.label_status.setText(_badge(versao.status))
+        self.label_notas.setText(versao.notas or "—")
         self.label_info.setText(f"v{versao.numero}  |  {versao.criado_em}")
+
+        total = self.combo_versoes.count()
+        atual_tag = "  (Atual)" if versao.atual else ""
+        self.label_versao_info.setText(f"{versao.numero} de {total}  ·  {versao.tipo}{atual_tag}")
+        # combo ordena DESC (index 0 = mais recente); ‹ vai para mais antiga (idx+1)
+        self.btn_versao_ant.setEnabled(index < total - 1)
+        self.btn_versao_prox.setEnabled(index > 0)
         self._carregando = False
+
+    def _editar_versao(self):
+        if not self._versao_atual:
+            return
+        dlg = DialogEditarVersao(self, versao=self._versao_atual)
+        if dlg.exec():
+            M.atualizar_meta_versao(
+                self.conn,
+                self._versao_atual.id,
+                dlg.tipo,
+                dlg.status,
+                dlg.notas,
+            )
+            idx = self.combo_versoes.currentIndex()
+            self._recarregar_versoes()
+            self.combo_versoes.setCurrentIndex(idx)
+
+    def _versao_anterior(self):
+        """Navega para a versão mais antiga (índice maior no combo DESC)."""
+        idx = self.combo_versoes.currentIndex()
+        if idx < self.combo_versoes.count() - 1:
+            self.combo_versoes.setCurrentIndex(idx + 1)
+
+    def _proxima_versao(self):
+        """Navega para a versão mais recente (índice menor no combo DESC)."""
+        idx = self.combo_versoes.currentIndex()
+        if idx > 0:
+            self.combo_versoes.setCurrentIndex(idx - 1)
 
     def _salvar_tudo(self):
         if not self._versao_atual:
             return
         M.salvar_conteudo_versao(self.conn, self._versao_atual.id, self.editor.text())
-        M.atualizar_versao(
-            self.conn,
-            self._versao_atual.id,
-            self.combo_status.currentText(),
-            self.campo_notas.toPlainText(),
-        )
         num = self._versao_atual.numero
         pos = self.editor.getCursorPosition()
         scroll_h = self.editor.horizontalScrollBar().value()
