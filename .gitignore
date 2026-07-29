@@ -1,0 +1,26 @@
+# Dados do usuário — NUNCA versionar: contêm regras de clientes reais
+versionfile.db
+versionfile.bak-*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Configs gerados em tempo de execução
+config/ui_prefs.json
+config/tree_state.json
+
+# Build
+build/
+dist/
+*.spec.bak
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Editores
+.vscode/
+.idea/
