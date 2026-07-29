@@ -1,5 +1,5 @@
 import sqlite3
-import os
+from datetime import datetime
 from pathlib import Path
 from core.paths import data_path
 
@@ -7,10 +7,57 @@ DB_PATH = data_path() / "versionfile.db"
 
 
 def get_connection() -> sqlite3.Connection:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _tem_dados(conn) -> bool:
+    """Indica se o banco já tem conteúdo do usuário (banco recém-criado não tem)."""
+    return conn.execute("SELECT EXISTS(SELECT 1 FROM clientes)").fetchone()[0] == 1
+
+
+def _precisa_migrar(conn) -> bool:
+    """
+    Informa se `_migrar` tem algum trabalho a fazer. Usado para decidir se vale
+    gerar um backup — as mesmas condições verificadas lá dentro.
+    """
+    colunas_versoes = [r[1] for r in conn.execute("PRAGMA table_info(versoes)").fetchall()]
+    if "tipo" not in colunas_versoes:
+        return True
+
+    colunas_projetos = [r[1] for r in conn.execute("PRAGMA table_info(projetos)").fetchall()]
+    if "descricao" not in colunas_projetos:
+        return True
+
+    create_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='projetos'"
+    ).fetchone()
+    if create_sql and ("'Regra'" not in create_sql[0] or "'Webservice'" not in create_sql[0]):
+        return True
+
+    return False
+
+
+def fazer_backup(conn) -> Path:
+    """
+    Copia o banco inteiro para um arquivo .bak antes de qualquer alteração de
+    schema, usando a API de backup do SQLite (segura com a conexão aberta).
+
+    Backups nunca são removidos automaticamente: são raros — só ocorrem quando
+    o schema muda — e apagá-los sozinho contraria a garantia de que o programa
+    nunca destrói dado do usuário.
+    """
+    carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
+    destino = DB_PATH.parent / f"versionfile.bak-{carimbo}.db"
+    destino_conn = sqlite3.connect(destino)
+    try:
+        conn.backup(destino_conn)
+    finally:
+        destino_conn.close()
+    return destino
 
 
 def _migrar(conn):
@@ -127,4 +174,7 @@ def initialize_db():
                 UNIQUE(regra_id, numero)
             );
         """)
+        if _precisa_migrar(conn) and _tem_dados(conn):
+            destino = fazer_backup(conn)
+            print(f"Backup criado antes da migração de schema: {destino}")
         _migrar(conn)
