@@ -6,11 +6,14 @@ Nunca lança exceção que derrube o app — qualquer erro retorna None.
 """
 
 import json
+import subprocess
+import tempfile
 import time
 import urllib.request
 import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from core.paths import data_path
 from core.version import __version__
@@ -132,3 +135,92 @@ def verificar_atualizacao(
 
     except Exception:
         return None
+
+
+class ErroAtualizacao(Exception):
+    """Erro durante download ou instalação de atualização."""
+
+
+def baixar_e_instalar(
+    update_info: InfoAtualizacao,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> None:
+    """
+    Baixa o instalador da atualização e o executa em modo silencioso.
+
+    O instalador é disparado como processo destacado (DETACHED_PROCESS)
+    para que sobreviva ao fechamento do app atual. A função NÃO chama
+    sys.exit — quem chamou deve fechar o app no momento apropriado
+    (salvando edições pendentes via salvar_se_pendente()).
+
+    Levanta ErroAtualizacao se qualquer etapa falhar.
+    """
+    url = update_info.url_download
+    tamanho_esperado = update_info.tamanho_bytes
+
+    if not url:
+        raise ErroAtualizacao("URL de download vazia.")
+
+    # -- Download em streaming para pasta temporária ----------------------
+    nome_arquivo = f"VersionFile-{update_info.versao}-Setup.exe"
+    destino = Path(tempfile.gettempdir()) / nome_arquivo
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "VersionFile-Updater"},
+        )
+        resp = urllib.request.urlopen(req, timeout=30)
+    except Exception as e:
+        raise ErroAtualizacao(f"Falha ao conectar para download: {e}") from e
+
+    try:
+        baixados = 0
+        chunk_size = 64 * 1024  # 64 KB
+
+        with open(destino, "wb") as f:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                baixados += len(chunk)
+                if on_progress:
+                    on_progress(baixados, tamanho_esperado)
+    except Exception as e:
+        # Remove arquivo parcial se o download falhou
+        try:
+            destino.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise ErroAtualizacao(f"Falha durante o download: {e}") from e
+    finally:
+        resp.close()
+
+    # -- Verificação de integridade (tamanho) -----------------------------
+    tamanho_real = destino.stat().st_size
+    if tamanho_esperado > 0 and tamanho_real != tamanho_esperado:
+        try:
+            destino.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise ErroAtualizacao(
+            f"Tamanho do arquivo não confere: esperado {tamanho_esperado} "
+            f"bytes, recebido {tamanho_real} bytes. Download corrompido."
+        )
+
+    # -- Dispara o instalador como processo destacado ---------------------
+    try:
+        # CREATE_NEW_PROCESS_GROUP + DETACHED_PROCESS: o instalador
+        # sobrevive ao fechamento do VersionFile.exe atual.
+        flags = (
+            subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.DETACHED_PROCESS
+        )
+        subprocess.Popen(
+            [str(destino), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+            close_fds=True,
+            creationflags=flags,
+        )
+    except Exception as e:
+        raise ErroAtualizacao(f"Falha ao iniciar o instalador: {e}") from e

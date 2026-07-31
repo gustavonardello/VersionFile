@@ -1,8 +1,6 @@
-import webbrowser
-
 from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QDialog, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton,
+    QLabel, QPushButton, QProgressBar, QMessageBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon
@@ -10,7 +8,9 @@ from ui.tree_panel import TreePanel
 from ui.editor_panel import EditorPanel
 from ui.export_dialog import ExportDialog
 from core.paths import base_path
-from core.updater import verificar_atualizacao, InfoAtualizacao
+from core.updater import (
+    verificar_atualizacao, baixar_e_instalar, InfoAtualizacao, ErroAtualizacao,
+)
 
 
 class _WorkerAtualizacao(QThread):
@@ -20,6 +20,29 @@ class _WorkerAtualizacao(QThread):
     def run(self):
         info = verificar_atualizacao()
         self.resultado.emit(info)
+
+
+class _WorkerDownload(QThread):
+    """Baixa e instala a atualização em background."""
+    progresso = pyqtSignal(int, int)  # bytes_baixados, bytes_totais
+    concluido = pyqtSignal()
+    erro = pyqtSignal(str)
+
+    def __init__(self, info: InfoAtualizacao):
+        super().__init__()
+        self._info = info
+
+    def run(self):
+        try:
+            baixar_e_instalar(self._info, on_progress=self._reportar)
+            self.concluido.emit()
+        except ErroAtualizacao as e:
+            self.erro.emit(str(e))
+        except Exception as e:
+            self.erro.emit(f"Erro inesperado: {e}")
+
+    def _reportar(self, baixados: int, total: int):
+        self.progresso.emit(baixados, total)
 
 
 class MainWindow(QMainWindow):
@@ -116,18 +139,65 @@ class MainWindow(QMainWindow):
         btn_depois.clicked.connect(dlg.close)
         btn_layout.addWidget(btn_depois)
 
-        btn_baixar = QPushButton("Baixar")
+        btn_baixar = QPushButton("Instalar agora")
         btn_baixar.setDefault(True)
-        btn_baixar.clicked.connect(lambda: self._abrir_release(info, dlg))
+        btn_baixar.clicked.connect(lambda: self._iniciar_download(info, dlg))
         btn_layout.addWidget(btn_baixar)
 
         layout.addLayout(btn_layout)
         dlg.setModal(False)
         dlg.show()
 
-    def _abrir_release(self, info: InfoAtualizacao, dlg: QDialog):
-        webbrowser.open(info.url_release)
-        dlg.close()
+    def _iniciar_download(self, info: InfoAtualizacao, dlg_aviso: QDialog):
+        dlg_aviso.close()
+
+        # Diálogo de progresso do download
+        self._dlg_progresso = QDialog(self)
+        self._dlg_progresso.setWindowTitle("Atualizando...")
+        self._dlg_progresso.setFixedSize(400, 120)
+        self._dlg_progresso.setModal(True)
+
+        layout = QVBoxLayout(self._dlg_progresso)
+        self._lbl_progresso = QLabel("Baixando atualização...")
+        layout.addWidget(self._lbl_progresso)
+
+        self._barra_progresso = QProgressBar()
+        self._barra_progresso.setRange(0, info.tamanho_bytes or 0)
+        self._barra_progresso.setValue(0)
+        layout.addWidget(self._barra_progresso)
+
+        self._dlg_progresso.show()
+
+        # Worker de download em background
+        self._worker_download = _WorkerDownload(info)
+        self._worker_download.progresso.connect(self._atualizar_progresso)
+        self._worker_download.concluido.connect(self._download_concluido)
+        self._worker_download.erro.connect(self._download_erro)
+        self._worker_download.start()
+
+    def _atualizar_progresso(self, baixados: int, total: int):
+        self._barra_progresso.setValue(baixados)
+        mb_baixados = baixados / (1024 * 1024)
+        mb_total = total / (1024 * 1024)
+        self._lbl_progresso.setText(
+            f"Baixando atualização... {mb_baixados:.1f} / {mb_total:.1f} MB"
+        )
+
+    def _download_concluido(self):
+        self._dlg_progresso.close()
+        # Instalador já foi disparado como processo destacado.
+        # Fecha o app normalmente (salva edições pendentes via closeEvent).
+        self.close()
+
+    def _download_erro(self, mensagem: str):
+        self._dlg_progresso.close()
+        QMessageBox.warning(
+            self,
+            "Erro na atualização",
+            f"Não foi possível atualizar:\n\n{mensagem}\n\n"
+            f"Você pode baixar manualmente em:\n"
+            f"github.com/gustavonardello/VersionFile/releases",
+        )
 
     # -- Estilo -------------------------------------------------------------
 

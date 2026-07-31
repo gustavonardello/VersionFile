@@ -54,4 +54,4 @@ Name: "icone_desktop"; Description: "Criar atalho na Área de Trabalho"; GroupDe
 Type: filesandordirs; Name: "{app}\_internal"
 
 [Run]
-Filename: "{app}\VersionFile.exe"; Description: "Iniciar o VersionFile"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\VersionFile.exe"; Description: "Iniciar o VersionFile"; Flags: nowait postinstall runasoriginaluser
