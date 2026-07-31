@@ -1,0 +1,82 @@
+name: Build e Release
+
+# Empurrar uma tag `v*` gera o .exe e o publica na release correspondente.
+# O disparo manual (workflow_dispatch) só gera o .exe como artefato do build,
+# útil para testar uma versão sem criar tag nem release.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.11.1
+
+      - name: Gerar o executável
+        run: pyinstaller --noconfirm VersionFile.spec
+
+      - name: Conferir o resultado do build
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/VersionFile.exe")) {
+            throw "dist/VersionFile.exe não foi gerado — verifique o log do PyInstaller acima."
+          }
+          $tamanho = (Get-Item "dist/VersionFile.exe").Length / 1MB
+          Write-Host ("Executável gerado: {0:N1} MB" -f $tamanho)
+          if ($tamanho -lt 10) {
+            throw "Executável tem apenas $tamanho MB — pequeno demais, provavelmente o build saiu incompleto."
+          }
+
+      # Disponível em toda execução, inclusive nos disparos manuais: permite
+      # baixar e testar o .exe sem publicar nada.
+      - name: Guardar o executável como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: VersionFile-exe
+          path: dist/VersionFile.exe
+          retention-days: 30
+
+      # Se a release da tag já existir (criada à mão, com as notas escritas),
+      # apenas anexa o .exe nela. Se não existir, cria como RASCUNHO para você
+      # revisar, testar o executável e escrever as notas antes de publicar.
+      - name: Publicar o executável na release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $tag = '${{ github.ref_name }}'
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag já existe — anexando o executável."
+            gh release upload $tag dist/VersionFile.exe --clobber
+          } else {
+            Write-Host "Release $tag não existe — criando como rascunho."
+            gh release create $tag dist/VersionFile.exe --draft --generate-notes --title $tag
+          }
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Falha ao publicar o executável na release $tag."
+          }
