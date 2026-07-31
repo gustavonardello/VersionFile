@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-Spec do PyInstaller para o VersionFile.
+Spec do PyInstaller para o VersionFile (modo onedir).
 
     pyinstaller --noconfirm VersionFile.spec
-    # saída: dist/VersionFile.exe
+    # saída: dist/VersionFile/ (pasta com VersionFile.exe + DLLs)
 
 Os arquivos em `datas` são lidos em tempo de execução via `base_path()`, que
-aponta para o diretório temporário de extração (_MEIPASS) quando congelado.
+aponta para o diretório do executável quando congelado em modo onedir.
 Esquecer qualquer um deles gera um .exe que abre e quebra depois:
 
   - config/themes.json : `_bootstrap()` em main.py copia este arquivo para a
@@ -18,7 +18,7 @@ Esquecer qualquer um deles gera um .exe que abre e quebra depois:
                          dele não quebra o app — a logo só some, sem aviso.
 
 Os dados mutáveis do usuário (banco, configs editados) NÃO ficam aqui — vivem
-em %LOCALAPPDATA%\\VersionFile, resolvido por `data_path()`.
+em %LOCALAPPDATA%\VersionFile, resolvido por `data_path()`.
 """
 
 a = Analysis(
@@ -43,9 +43,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="VersionFile",
     debug=False,
     bootloader_ignore_signals=False,
@@ -60,4 +59,14 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=["icone.ico"],
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="VersionFile",
 )
