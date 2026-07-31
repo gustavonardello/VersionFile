@@ -23,7 +23,7 @@ DefaultDirName={localappdata}\Programs\VersionFile
 DefaultGroupName=VersionFile
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=VersionFile-{#AppVersion}-Setup
+OutputBaseFilename=VersionFile-{#AppVersion}
 SetupIconFile=..\icone.ico
 Compression=lzma2
 SolidCompression=yes
@@ -47,6 +47,11 @@ Name: "{autodesktop}\VersionFile"; Filename: "{app}\VersionFile.exe"; Tasks: ico
 
 [Tasks]
 Name: "icone_desktop"; Description: "Criar atalho na Área de Trabalho"; GroupDescription: "Atalhos adicionais:"
+
+[UninstallDelete]
+; Remove subpastas vazias que createallsubdirs cria mas o Inno nao rastreia.
+; Apenas a pasta de INSTALACAO ({app}) — NUNCA a pasta de dados do usuario.
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Run]
 Filename: "{app}\VersionFile.exe"; Description: "Iniciar o VersionFile"; Flags: nowait postinstall skipifsilent
