@@ -35,7 +35,8 @@ def testar(versao_simulada: str):
     if resultado is None:
         print("  Resultado: None (sem atualização disponível ou sem asset Setup.exe)")
     else:
-        print(f"  Versão remota: {resultado.versao}")
+        print(f"  Versao remota:  {resultado.versao}")
+        print(f"  URL release:   {resultado.url_release}")
         print(f"  URL download:  {resultado.url_download}")
         print(f"  Tamanho:       {resultado.tamanho_bytes / (1024*1024):.1f} MB")
         print(f"  Notas:         {resultado.notas[:120]}...")

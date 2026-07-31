@@ -19,6 +19,7 @@ from core.version import __version__
 @dataclass
 class InfoAtualizacao:
     versao: str
+    url_release: str
     url_download: str
     tamanho_bytes: int
     notas: str
@@ -96,7 +97,8 @@ def verificar_atualizacao(
         with urllib.request.urlopen(req, timeout=5) as resp:
             dados = json.loads(resp.read().decode("utf-8"))
 
-        _salvar_cache()
+        if not forcar:
+            _salvar_cache()
 
         tag_remota = dados.get("tag_name", "")
         versao_remota = _parse_versao(tag_remota)
@@ -122,6 +124,7 @@ def verificar_atualizacao(
 
         return InfoAtualizacao(
             versao=tag_remota.lstrip("vV"),
+            url_release=dados.get("html_url", ""),
             url_download=asset_setup.get("browser_download_url", ""),
             tamanho_bytes=asset_setup.get("size", 0),
             notas=dados.get("body", "") or "",

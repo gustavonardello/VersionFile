@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
         dlg.show()
 
     def _abrir_release(self, info: InfoAtualizacao, dlg: QDialog):
-        webbrowser.open(info.url_download)
+        webbrowser.open(info.url_release)
         dlg.close()
 
     # -- Estilo -------------------------------------------------------------
