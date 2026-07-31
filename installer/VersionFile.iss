@@ -32,6 +32,12 @@ UninstallDisplayIcon={app}\VersionFile.exe
 ; Não perguntar sobre pasta de instalação — usuário sem admin não tem
 ; liberdade de escolher Program Files de qualquer forma
 DisableDirPage=yes
+; Usa o Restart Manager do Windows para fechar o VersionFile.exe antigo
+; antes de sobrescrever os arquivos, e reabri-lo depois — elimina a
+; condição de corrida entre self.close() do Python e a cópia do instalador.
+CloseApplications=yes
+CloseApplicationsFilter=VersionFile.exe
+RestartApplications=yes
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
