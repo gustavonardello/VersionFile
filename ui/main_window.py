@@ -1,10 +1,25 @@
-from PyQt6.QtWidgets import QMainWindow, QSplitter
-from PyQt6.QtCore import Qt
+import webbrowser
+
+from PyQt6.QtWidgets import (
+    QMainWindow, QSplitter, QDialog, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton,
+)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon
 from ui.tree_panel import TreePanel
 from ui.editor_panel import EditorPanel
 from ui.export_dialog import ExportDialog
 from core.paths import base_path
+from core.updater import verificar_atualizacao, InfoAtualizacao
+
+
+class _WorkerAtualizacao(QThread):
+    """Verifica atualização em background, sem travar a UI."""
+    resultado = pyqtSignal(object)  # InfoAtualizacao ou None
+
+    def run(self):
+        info = verificar_atualizacao()
+        self.resultado.emit(info)
 
 
 class MainWindow(QMainWindow):
@@ -40,6 +55,8 @@ class MainWindow(QMainWindow):
         self.tree_panel.regra_selecionada.connect(self.editor_panel.abrir_regra)
         self.tree_panel.regra_desmarcada.connect(self.editor_panel.desabilitar_acoes)
 
+        self._iniciar_checagem_atualizacao()
+
     def _criar_menu(self):
         barra = self.menuBar()
 
@@ -64,6 +81,55 @@ class MainWindow(QMainWindow):
     def _abrir_exportacao(self):
         dlg = ExportDialog(self.conn, parent=self)
         dlg.exec()
+
+    # -- Atualização ----------------------------------------------------------
+
+    def _iniciar_checagem_atualizacao(self):
+        self._worker_update = _WorkerAtualizacao()
+        self._worker_update.resultado.connect(self._tratar_resultado_atualizacao)
+        self._worker_update.start()
+
+    def _tratar_resultado_atualizacao(self, info: InfoAtualizacao | None):
+        if info is None:
+            return
+        self._mostrar_dialogo_atualizacao(info)
+
+    def _mostrar_dialogo_atualizacao(self, info: InfoAtualizacao):
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Atualização disponível")
+        dlg.setFixedSize(420, 200)
+
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(12)
+
+        lbl = QLabel(
+            f"<b>Nova versão {info.versao} disponível!</b><br><br>"
+            f"Tamanho: {info.tamanho_bytes / (1024 * 1024):.1f} MB"
+        )
+        lbl.setWordWrap(True)
+        layout.addWidget(lbl)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        btn_depois = QPushButton("Mais tarde")
+        btn_depois.clicked.connect(dlg.close)
+        btn_layout.addWidget(btn_depois)
+
+        btn_baixar = QPushButton("Baixar")
+        btn_baixar.setDefault(True)
+        btn_baixar.clicked.connect(lambda: self._abrir_release(info, dlg))
+        btn_layout.addWidget(btn_baixar)
+
+        layout.addLayout(btn_layout)
+        dlg.setModal(False)
+        dlg.show()
+
+    def _abrir_release(self, info: InfoAtualizacao, dlg: QDialog):
+        webbrowser.open(info.url_release)
+        dlg.close()
+
+    # -- Estilo -------------------------------------------------------------
 
     def _aplicar_estilo(self):
         self.menuBar().setStyleSheet(

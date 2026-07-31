@@ -8,6 +8,7 @@ versionfile.bak-*.db
 # Configs gerados em tempo de execução
 config/ui_prefs.json
 config/tree_state.json
+config/update_check.json
 
 # Build
 build/
