@@ -10,6 +10,18 @@
 
 $ErrorActionPreference = "Stop"
 
+# Verifica que NAO esta rodando como admin — senao o teste de "sem UAC"
+# nao prova nada (um instalador que exigisse admin passaria do mesmo jeito).
+$souAdmin = ([Security.Principal.WindowsPrincipal] `
+    [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if ($souAdmin) {
+    Write-Host "FALHOU: este script precisa rodar em PowerShell NAO elevado." -ForegroundColor Red
+    Write-Host "Rodando como admin, o teste de 'sem UAC' nao prova nada." -ForegroundColor Red
+    exit 1
+}
+
 $dataDir    = "$env:LOCALAPPDATA\VersionFile"
 $installDir = "$env:LOCALAPPDATA\Programs\VersionFile"
 $dbPath     = "$dataDir\versionfile.db"
