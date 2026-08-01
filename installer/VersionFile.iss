@@ -33,11 +33,12 @@ UninstallDisplayIcon={app}\VersionFile.exe
 ; liberdade de escolher Program Files de qualquer forma
 DisableDirPage=yes
 ; Usa o Restart Manager do Windows para fechar o VersionFile.exe antigo
-; antes de sobrescrever os arquivos, e reabri-lo depois — elimina a
-; condição de corrida entre self.close() do Python e a cópia do instalador.
+; antes de sobrescrever os arquivos — elimina a condicao de corrida entre
+; self.close() do Python e a copia do instalador. A reabertura e feita
+; exclusivamente pela entrada [Run] abaixo, nao pelo RestartApplications.
 CloseApplications=yes
 CloseApplicationsFilter=VersionFile.exe
-RestartApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

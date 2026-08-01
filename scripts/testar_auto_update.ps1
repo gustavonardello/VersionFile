@@ -86,13 +86,34 @@ for ($i = 1; $i -le $rodadas; $i++) {
         Write-Host "  Cache de update removido (forcar checagem)."
     }
 
-    # -- Abrir o app e esperar o auto-update ------------------------------
-    Write-Host "  Abrindo VersionFile v1.0.0 e aguardando auto-update..."
-    $appProc = Start-Process -FilePath "$installDir\VersionFile.exe" -PassThru
+    # -- Esperar o app v1.0.0 que o [Run] do instalador ja abriu ---------
+    # O instalador com /VERYSILENT executa a entrada [Run] automaticamente,
+    # entao o app ja deve estar rodando. Detectamos o processo em vez de
+    # abrir uma segunda instancia manualmente.
+    Write-Host "  Aguardando VersionFile v1.0.0 surgir (aberto pelo instalador)..."
+    $esperouSurgir = 0
+    $surgirTimeout = 15
+    $appProc = $null
 
-    # Aguarda ate 120s: o app deve detectar v1.1.0, baixar (~30MB),
-    # instalar silenciosamente, fechar e reabrir.
-    # O processo original (v1.0.0) deve morrer e um novo (v1.1.0) deve surgir.
+    while ($esperouSurgir -lt $surgirTimeout) {
+        Start-Sleep -Seconds 1
+        $esperouSurgir++
+        $appProc = Get-Process -Name "VersionFile" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($appProc) {
+            Write-Host "  VersionFile v1.0.0 detectado (PID=$($appProc.Id)) apos ${esperouSurgir}s."
+            break
+        }
+    }
+
+    if (-not $appProc) {
+        Write-Host "    FALHOU: VersionFile v1.0.0 nao surgiu em ${surgirTimeout}s." -ForegroundColor Red
+        $falhasTotais++
+        continue
+    }
+
+    # Aguarda ate 120s para o processo v1.0.0 morrer (auto-update detecta
+    # v1.1.0, baixa, lanca instalador e faz self.close()).
+    Write-Host "  Aguardando auto-update (processo v1.0.0 deve fechar)..."
     $timeout = 120
     $esperou = 0
     $processoOriginalMorreu = $false
@@ -134,8 +155,25 @@ for ($i = 1; $i -le $rodadas; $i++) {
     Resultado "App reabriu automaticamente" ($null -ne $novoProcesso)
 
     if ($novoProcesso) {
-        # Espera o app estabilizar
-        Start-Sleep -Seconds 3
+        # Espera o app estabilizar e verifica instancias
+        Start-Sleep -Seconds 5
+        $todosProcessos = @(Get-Process -Name "VersionFile" -ErrorAction SilentlyContinue)
+
+        # Se nao ha nenhum processo, pode ser que o app ainda nao subiu
+        # (o [Run] pode demorar). Aguarda mais um pouco e tenta de novo.
+        if ($todosProcessos.Count -eq 0) {
+            Write-Host "    Nenhuma instancia detectada apos 5s, aguardando mais 5s..."
+            Start-Sleep -Seconds 5
+            $todosProcessos = @(Get-Process -Name "VersionFile" -ErrorAction SilentlyContinue)
+        }
+
+        Write-Host "    Instancias rodando: $($todosProcessos.Count)"
+        Resultado "Exatamente 1 instancia rodando (nao duplicada)" ($todosProcessos.Count -eq 1)
+
+        # Reatribui para usar nos passos seguintes (fechar, etc.)
+        if ($todosProcessos.Count -ge 1) {
+            $novoProcesso = $todosProcessos[0]
+        }
 
         # Verifica a versao lendo o AppVersion do registro do Inno Setup
         $regPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}_is1"

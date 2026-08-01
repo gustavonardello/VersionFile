@@ -19,6 +19,20 @@ from core.paths import data_path
 from core.version import __version__
 
 
+def _log_erro_updater(exc: Exception):
+    """Registra erros do verificar_atualizacao em updater.log."""
+    try:
+        import traceback
+        from datetime import datetime
+        log = data_path() / "updater.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"\n--- {datetime.now().isoformat()} ---\n")
+            traceback.print_exception(type(exc), exc, exc.__traceback__, file=f)
+    except OSError:
+        pass
+
+
 @dataclass
 class InfoAtualizacao:
     versao: str
@@ -133,7 +147,8 @@ def verificar_atualizacao(
             notas=dados.get("body", "") or "",
         )
 
-    except Exception:
+    except Exception as e:
+        _log_erro_updater(e)
         return None
 
 

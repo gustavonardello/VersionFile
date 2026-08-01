@@ -1,3 +1,6 @@
+import os
+from datetime import datetime
+
 from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QProgressBar, QMessageBox,
@@ -7,10 +10,22 @@ from PyQt6.QtGui import QAction, QIcon
 from ui.tree_panel import TreePanel
 from ui.editor_panel import EditorPanel
 from ui.export_dialog import ExportDialog
-from core.paths import base_path
+from core.paths import base_path, data_path
 from core.updater import (
     verificar_atualizacao, baixar_e_instalar, InfoAtualizacao, ErroAtualizacao,
 )
+
+
+def _boot_log(msg: str):
+    """Grava uma linha no boot.log com flush imediato."""
+    try:
+        log = data_path() / "boot.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().isoformat()} {msg}\n")
+            f.flush()
+    except OSError:
+        pass
 
 
 class _WorkerAtualizacao(QThread):
@@ -98,6 +113,7 @@ class MainWindow(QMainWindow):
         menu_arquivo.addAction(act_sair)
 
     def closeEvent(self, event):
+        _boot_log(f"closeEvent chamado, PID={os.getpid()}")
         self.editor_panel.salvar_se_pendente()
         super().closeEvent(event)
 
@@ -184,6 +200,7 @@ class MainWindow(QMainWindow):
         )
 
     def _download_concluido(self):
+        _boot_log(f"_download_concluido chamado, PID={os.getpid()}")
         self._dlg_progresso.close()
         # Instalador já foi disparado como processo destacado.
         # Fecha o app normalmente (salva edições pendentes via closeEvent).
