@@ -26,6 +26,21 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Verificar que core/version.py bate com a tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $versaoTag = '${{ github.ref_name }}' -replace '^v', ''
+          $conteudo = Get-Content core/version.py -Raw
+          if ($conteudo -notmatch '__version__\s*=\s*"([^"]+)"') {
+            throw "Não foi possível ler __version__ de core/version.py"
+          }
+          $versaoCodigo = $Matches[1]
+          if ($versaoCodigo -ne $versaoTag) {
+            throw "core/version.py diz '$versaoCodigo' mas a tag é '$versaoTag' — atualize core/version.py e crie uma nova tag antes de liberar."
+          }
+          Write-Host "OK: core/version.py ($versaoCodigo) bate com a tag ($versaoTag)"
+
       - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
