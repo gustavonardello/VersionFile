@@ -26,6 +26,21 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Verificar que core/version.py bate com a tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $versaoTag = '${{ github.ref_name }}' -replace '^v', ''
+          $conteudo = Get-Content core/version.py -Raw
+          if ($conteudo -notmatch '__version__\s*=\s*"([^"]+)"') {
+            throw "Não foi possível ler __version__ de core/version.py"
+          }
+          $versaoCodigo = $Matches[1]
+          if ($versaoCodigo -ne $versaoTag) {
+            throw "core/version.py diz '$versaoCodigo' mas a tag é '$versaoTag' — atualize core/version.py e crie uma nova tag antes de liberar."
+          }
+          Write-Host "OK: core/version.py ($versaoCodigo) bate com a tag ($versaoTag)"
+
       - name: Instalar dependências
         run: |
           python -m pip install --upgrade pip
@@ -35,31 +50,50 @@ jobs:
       - name: Gerar o executável
         run: pyinstaller --noconfirm VersionFile.spec
 
+      - name: Instalar Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compilar o instalador
+        shell: pwsh
+        run: |
+          # Extrai versão da tag (v1.2.0 → 1.2.0); usa 0.0.0-dev se não houver tag
+          $versao = if ('${{ github.ref_name }}' -match '^v(.+)$') { $Matches[1] } else { '0.0.0-dev' }
+          Write-Host "Versão para o instalador: $versao"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=$versao installer\VersionFile.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC falhou com código $LASTEXITCODE" }
+
       - name: Conferir o resultado do build
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist/VersionFile.exe")) {
-            throw "dist/VersionFile.exe não foi gerado — verifique o log do PyInstaller acima."
+          # Verifica a pasta onedir do PyInstaller
+          if (-not (Test-Path "dist\VersionFile\VersionFile.exe")) {
+            throw "dist\VersionFile\VersionFile.exe não foi gerado — verifique o log do PyInstaller acima."
           }
-          $tamanho = (Get-Item "dist/VersionFile.exe").Length / 1MB
-          Write-Host ("Executável gerado: {0:N1} MB" -f $tamanho)
+
+          # Verifica o instalador gerado pelo Inno Setup
+          $instalador = Get-ChildItem "dist\VersionFile-*-Setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $instalador) {
+            throw "Instalador não encontrado em dist\ — verifique o log do ISCC acima."
+          }
+          $tamanho = $instalador.Length / 1MB
+          Write-Host ("Instalador gerado: {0} ({1:N1} MB)" -f $instalador.Name, $tamanho)
           if ($tamanho -lt 10) {
-            throw "Executável tem apenas $tamanho MB — pequeno demais, provavelmente o build saiu incompleto."
+            throw "Instalador tem apenas $([math]::Round($tamanho, 1)) MB — pequeno demais, build provavelmente incompleto."
           }
 
       # Disponível em toda execução, inclusive nos disparos manuais: permite
-      # baixar e testar o .exe sem publicar nada.
-      - name: Guardar o executável como artefato
+      # baixar e testar o instalador sem publicar nada.
+      - name: Guardar o instalador como artefato
         uses: actions/upload-artifact@v4
         with:
-          name: VersionFile-exe
-          path: dist/VersionFile.exe
+          name: VersionFile-Setup
+          path: dist/VersionFile-*-Setup.exe
           retention-days: 30
 
       # Se a release da tag já existir (criada à mão, com as notas escritas),
-      # apenas anexa o .exe nela. Se não existir, cria como RASCUNHO para você
-      # revisar, testar o executável e escrever as notas antes de publicar.
-      - name: Publicar o executável na release
+      # apenas anexa o instalador nela. Se não existir, cria como RASCUNHO
+      # para você revisar, testar e escrever as notas antes de publicar.
+      - name: Publicar o instalador na release
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
@@ -67,16 +101,22 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $tag = '${{ github.ref_name }}'
+          $versao = $tag -replace '^v', ''
+          $instalador = "dist\VersionFile-$versao-Setup.exe"
+
+          if (-not (Test-Path $instalador)) {
+            throw "Instalador $instalador não encontrado."
+          }
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag já existe — anexando o executável."
-            gh release upload $tag dist/VersionFile.exe --clobber
+            Write-Host "Release $tag já existe — anexando o instalador."
+            gh release upload $tag $instalador --clobber
           } else {
             Write-Host "Release $tag não existe — criando como rascunho."
-            gh release create $tag dist/VersionFile.exe --draft --generate-notes --title $tag
+            gh release create $tag $instalador --draft --generate-notes --title $tag
           }
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Falha ao publicar o executável na release $tag."
+            throw "Falha ao publicar o instalador na release $tag."
           }
