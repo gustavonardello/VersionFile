@@ -423,10 +423,10 @@ class BancoTemporario(unittest.TestCase):
             "9.0.0", "https://github.com/r", "https://github.com/r/setup.exe",
             "https://github.com/r/setup.exe.sha256", 1024, "",
         )
-        janela._mostrar_dialogo_atualizacao(info)
-        APP.processEvents()
+        with patch("ui.main_window.QDialog.show") as mostrar:
+            janela._mostrar_dialogo_atualizacao(info)
         self.assertIsNotNone(janela._dlg_atualizacao)
-        self.assertTrue(janela._dlg_atualizacao.isVisible())
+        mostrar.assert_called_once()
         janela._dlg_atualizacao.close()
 
 

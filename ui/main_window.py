@@ -211,8 +211,7 @@ class MainWindow(QMainWindow):
             self._dlg_atualizacao.close()
         dlg = QDialog(self)
         self._dlg_atualizacao = dlg
-        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        dlg.destroyed.connect(lambda: setattr(self, "_dlg_atualizacao", None))
+        dlg.finished.connect(self._finalizar_dialogo_atualizacao)
         dlg.setWindowTitle("Atualização disponível")
         dlg.setFixedSize(420, 200)
 
@@ -241,6 +240,13 @@ class MainWindow(QMainWindow):
         layout.addLayout(btn_layout)
         dlg.setModal(False)
         dlg.show()
+
+    def _finalizar_dialogo_atualizacao(self):
+        dlg = self.sender()
+        if self._dlg_atualizacao is dlg:
+            self._dlg_atualizacao = None
+        if dlg is not None:
+            dlg.deleteLater()
 
     def _iniciar_download(self, info: InfoAtualizacao, dlg_aviso: QDialog):
         dlg_aviso.close()
