@@ -32,7 +32,12 @@ class InfoAtualizacao:
     notas: str
 
 
+class ErroAtualizacao(Exception):
+    """Erro durante consulta, download ou instalação de atualização."""
+
+
 _CACHE_PATH = None  # inicializado sob demanda
+_INTERVALO_CACHE_SEGUNDOS = 60 * 60
 
 
 def _cache_path() -> Path:
@@ -53,14 +58,14 @@ def _parse_versao(tag: str) -> tuple[int, ...] | None:
 
 
 def _deve_verificar() -> bool:
-    """Retorna True se já passaram mais de 20 horas desde a última checagem."""
+    """Retorna True se já passou uma hora desde a última checagem sem update."""
     caminho = _cache_path()
     if not caminho.exists():
         return True
     try:
         dados = json.loads(caminho.read_text(encoding="utf-8"))
         ultima = dados.get("ultima_checagem", 0)
-        return (time.time() - ultima) > 20 * 3600
+        return (time.time() - ultima) > _INTERVALO_CACHE_SEGUNDOS
     except (json.JSONDecodeError, OSError, KeyError, TypeError, AttributeError):
         return True
 
@@ -78,16 +83,26 @@ def _salvar_cache():
         pass  # não impede o funcionamento do app
 
 
+def _limpar_cache():
+    """Não deixa uma atualização disponível ser ocultada na próxima abertura."""
+    try:
+        _cache_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def verificar_atualizacao(
     repo: str = "gustavonardello/VersionFile",
     forcar: bool = False,
+    propagar_erros: bool = False,
 ) -> InfoAtualizacao | None:
     """
     Consulta a release mais recente do GitHub e retorna InfoAtualizacao se
     houver versão mais nova com um asset *Setup.exe, ou None caso contrário.
 
-    Se `forcar` for True, ignora o cache de 20 h (útil para testes).
-    Nunca lança exceção — qualquer falha retorna None silenciosamente.
+    Se `forcar` for True, ignora o cache de uma hora. Quando `propagar_erros`
+    é True, falhas de consulta são convertidas em ErroAtualizacao para que uma
+    verificação manual possa informar o usuário.
     """
     try:
         if not forcar and not _deve_verificar():
@@ -104,17 +119,16 @@ def verificar_atualizacao(
         with urllib.request.urlopen(req, timeout=5) as resp:
             dados = json.loads(resp.read().decode("utf-8"))
 
-        if not forcar:
-            _salvar_cache()
-
         tag_remota = dados.get("tag_name", "")
         versao_remota = _parse_versao(tag_remota)
         versao_local = _parse_versao(__version__)
 
         if versao_remota is None or versao_local is None:
+            _salvar_cache()
             return None
 
         if versao_remota <= versao_local:
+            _salvar_cache()
             return None
 
         # Procura asset cujo nome termine em "Setup.exe"
@@ -127,13 +141,15 @@ def verificar_atualizacao(
                 break
 
         if asset_setup is None:
+            _salvar_cache()
             return None
         nome_checksum = asset_setup.get("name", "") + ".sha256"
         asset_checksum = next((a for a in assets if a.get("name") == nome_checksum), None)
         if asset_checksum is None:
+            _salvar_cache()
             return None
 
-        return InfoAtualizacao(
+        info = InfoAtualizacao(
             versao=tag_remota.lstrip("vV"),
             url_release=dados.get("html_url", ""),
             url_download=asset_setup.get("browser_download_url", ""),
@@ -141,13 +157,13 @@ def verificar_atualizacao(
             tamanho_bytes=asset_setup.get("size", 0),
             notas=dados.get("body", "") or "",
         )
+        _limpar_cache()
+        return info
 
-    except Exception:
+    except Exception as e:
+        if propagar_erros:
+            raise ErroAtualizacao(f"Não foi possível consultar as atualizações: {e}") from e
         return None
-
-
-class ErroAtualizacao(Exception):
-    """Erro durante download ou instalação de atualização."""
 
 
 def baixar_e_instalar(

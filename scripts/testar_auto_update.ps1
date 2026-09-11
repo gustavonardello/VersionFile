@@ -12,7 +12,7 @@
 param(
     [switch]$ConfirmarAmbienteReal,
     [string]$VersaoAntiga = "1.1.0",
-    [string]$VersaoNova = "1.2.1"
+    [string]$VersaoNova = "1.2.2"
 )
 
 if (-not $ConfirmarAmbienteReal) {

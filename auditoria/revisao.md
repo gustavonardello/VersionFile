@@ -34,7 +34,7 @@ O banco `versionfile.db` do projeto foi aberto somente para leitura de estrutura
 
 Os INSERTs passaram a recuperar o registro por `lastrowid` em vez de `RETURNING`. Trata-se de um ajuste das operações de persistência; **não era a causa da mensagem informada**. O cadastro original de um nome novo funcionou no Python/SQLite instalado.
 
-**Pendências concluídas na versão 1.2.1**
+**Pendências concluídas na versão 1.2.2**
 
 Os itens que permaneceram abertos na primeira etapa também foram corrigidos e cobertos por testes quando automatizáveis.
 
@@ -42,7 +42,9 @@ Os itens que permaneceram abertos na primeira etapa também foram corrigidos e c
 |---|---|---|---|
 | Alta | `core/highlighter.py`, `ui/editor_panel.py` | Configurações inválidas podiam impedir a abertura. | Validação com paleta padrão interna, validação de preferências e backup `themes.invalid-*.json` ao substituir configuração inválida. |
 | Alta | scripts de instalação/atualização | Podiam operar no usuário real sem confirmação; o teste de update omitia o clique manual necessário. | Exigem `-ConfirmarAmbienteReal`, orientam uso em VM/usuário de teste, aceitam versões por parâmetro e declaram a ação manual. |
+| Alta | `core/updater.py`, `ui/main_window.py` | Uma consulta feita antes da publicação ocultava releases novas por 20 horas; o diálogo não tinha referência persistente nem consulta manual. | Cache reduzido a uma hora somente sem update, limpeza ao encontrar versão nova, diálogo persistente e ação `Ajuda > Verificar atualizações...` com retorno ao usuário. |
 | Média | `ui/main_window.py` | Importação e cores não estavam acessíveis. | Ações adicionadas aos menus Arquivo e Configurações e testadas. |
+| Baixa | `ui/main_window.py`, `core/version.py` | A versão em execução não aparecia na interface. | Barra de status mostra a versão no canto inferior direito a partir da fonte única usada pelo instalador e atualizador. |
 | Média | `core/importer.py` | Estruturas mistas ignoravam arquivos. | Scanner agrega simultaneamente arquivos na raiz e hierarquias de dois e três níveis. |
 | Média | `ui/tree_panel.py`, `core/text_utils.py` | Busca divergia com acentos e interpretava `%`/`_` como curingas. | Normalização Unicode uniforme e comparação literal em Python. |
 | Média | `ui/diff_viewer.py` | Linhas excedentes e quebra final eram classificadas incorretamente. | Excedentes passam a ser adição/remoção e a quebra final recebe marcador próprio. |
@@ -55,13 +57,14 @@ Os itens que permaneceram abertos na primeira etapa também foram corrigidos e c
 **Validação executada**
 
 - Python 3.11, SQLite 3.45.1 e PyQt6 6.11.0 disponíveis no ambiente.
-- `py -3.11 -m unittest discover -s tests -v`: **44 testes passaram** na rodada da conclusão das pendências. Inclui sintaxe, persistência, rollback, migração, temas, importação mista, busca Unicode literal, diff, exportação, checksum, navegação e falha de salvamento.
+- `py -3.11 -m unittest discover -s tests -v`: **47 testes passaram** na rodada da conclusão das pendências. Inclui sintaxe, persistência, rollback, migração, temas, importação mista, busca Unicode literal, diff, exportação, checksum, cache e diálogo de atualização, navegação e falha de salvamento.
 - `py -3.11 scripts/validar_interface.py`: executou `main.main()` com banco temporário, abriu cadastro, reproduziu duplicidade, verificou mensagem e preservação do nome, cadastrou outro nome e encerrou normalmente. Checagem de atualização substituída para não acessar rede.
 - Capturas offscreen inspecionadas: [cadastro](capturas/01-cadastro.png), [aviso de duplicidade](capturas/02-duplicidade.png), [cliente cadastrado](capturas/03-cliente-cadastrado.png). Layout e texto do fluxo ficaram legíveis; o renderizador offscreen usa fontes diferentes do desktop nativo.
+- O pacote PyInstaller foi reconstruído e `dist/VersionFile/VersionFile.exe --smoke-test` encerrou com código zero usando banco e pasta de dados temporários.
 - `git diff --check`: sem erros de whitespace; Git apenas avisou sobre conversão futura de LF para CRLF.
 
 **Limites e aplicação das mudanças**
 
 A leitura cobre o código-fonte descrito, mas os testes exercitam cenários selecionados; não constituem cobertura de todos os ramos, teste de carga ou garantia de ausência de defeitos. Instalação, desinstalação e atualização real dependem do pipeline e de um ambiente isolado; por isso os scripts destrutivos não foram executados contra os dados do usuário. O snapshot usa hard link quando disponível e cópia exclusiva como fallback.
 
-As correções compõem a versão 1.2.1. O executável instalado recebe as mudanças depois que o pipeline concluir e a release for publicada. Nenhum banco do usuário foi modificado durante a revisão.
+As correções compõem a versão 1.2.2. O executável instalado recebe as mudanças depois que o pipeline concluir e a release for publicada. Nenhum banco do usuário foi modificado durante a revisão.

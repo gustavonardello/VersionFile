@@ -80,6 +80,13 @@ pyinstaller VersionFile.spec
 O instalador publicado inclui um arquivo `.sha256`; o atualizador exige e
 confere esse checksum antes de executar uma nova versão.
 
+A verificação automática reutiliza por uma hora apenas resultados sem uma
+versão nova. Uma atualização disponível volta a ser oferecida a cada abertura
+até ser instalada. Também é possível ignorar o intervalo em
+`Ajuda > Verificar atualizações...`.
+
+A versão em execução aparece no canto inferior direito da janela principal.
+
 ## Download
 
 Acesse a aba [Releases](../../releases) para baixar o `.exe` — não requer Python instalado.

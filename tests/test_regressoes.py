@@ -412,6 +412,22 @@ class BancoTemporario(unittest.TestCase):
         ]
         self.assertIn("Importar estrutura de pastas...", textos)
         self.assertIn("Personalizar cores do editor...", textos)
+        self.assertIn("Verificar atualizações...", textos)
+        self.assertEqual(janela._label_versao.text(), f"Versão {updater.__version__}")
+
+    def test_dialogo_atualizacao_permanece_aberto(self):
+        with patch.object(EditorPanel, "_carregar_prefs", return_value={}), patch("ui.tree_panel._TREE_STATE_PATH", self.raiz / "tree_state.json"):
+            janela = MainWindow(self.conn, checar_atualizacao=False)
+        self.addCleanup(janela.deleteLater)
+        info = updater.InfoAtualizacao(
+            "9.0.0", "https://github.com/r", "https://github.com/r/setup.exe",
+            "https://github.com/r/setup.exe.sha256", 1024, "",
+        )
+        janela._mostrar_dialogo_atualizacao(info)
+        APP.processEvents()
+        self.assertIsNotNone(janela._dlg_atualizacao)
+        self.assertTrue(janela._dlg_atualizacao.isVisible())
+        janela._dlg_atualizacao.close()
 
 
 class ArquivosEDialogos(unittest.TestCase):
@@ -495,6 +511,45 @@ class ArquivosEDialogos(unittest.TestCase):
         resposta.read.return_value = json.dumps(dados).encode()
         with patch.object(updater, "__version__", "1.0.0"), patch("core.updater.urllib.request.urlopen", return_value=resposta):
             self.assertIsNone(updater.verificar_atualizacao(forcar=True))
+
+    def test_update_disponivel_limpa_cache_e_volta_a_ser_oferecido(self):
+        dados = {
+            "tag_name": "v9.0.0",
+            "html_url": "https://github.com/exemplo/release",
+            "assets": [
+                {
+                    "name": "VersionFile-9.0.0-Setup.exe",
+                    "browser_download_url": "https://github.com/r/setup.exe",
+                    "size": 3,
+                },
+                {
+                    "name": "VersionFile-9.0.0-Setup.exe.sha256",
+                    "browser_download_url": "https://github.com/r/setup.exe.sha256",
+                },
+            ],
+        }
+        resposta = Mock()
+        resposta.__enter__ = Mock(return_value=resposta)
+        resposta.__exit__ = Mock(return_value=False)
+        resposta.read.return_value = json.dumps(dados).encode()
+        with tempfile.TemporaryDirectory() as temp:
+            cache = Path(temp) / "update_check.json"
+            cache.write_text(
+                json.dumps({"ultima_checagem": updater.time.time()}),
+                encoding="utf-8",
+            )
+            with patch.object(updater, "_CACHE_PATH", cache), patch.object(updater, "__version__", "1.0.0"), patch("core.updater.urllib.request.urlopen", return_value=resposta) as abrir:
+                self.assertIsNone(updater.verificar_atualizacao())
+                abrir.assert_not_called()
+                self.assertEqual(updater.verificar_atualizacao(forcar=True).versao, "9.0.0")
+                self.assertFalse(cache.exists())
+                self.assertEqual(updater.verificar_atualizacao().versao, "9.0.0")
+                self.assertEqual(abrir.call_count, 2)
+
+    def test_verificacao_manual_propaga_erro_amigavel(self):
+        with patch("core.updater.urllib.request.urlopen", side_effect=OSError("sem rede")):
+            with self.assertRaisesRegex(updater.ErroAtualizacao, "consultar as atualizações"):
+                updater.verificar_atualizacao(forcar=True, propagar_erros=True)
 
     def test_download_valida_sha256_e_usa_pasta_exclusiva(self):
         conteudo = b"exe"

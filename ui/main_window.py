@@ -10,6 +10,7 @@ from ui.export_dialog import ExportDialog
 from ui.import_dialog import ImportDialog
 from ui.theme_color_dialog import ThemeColorDialog
 from core.paths import base_path
+from core.version import __version__
 from core.updater import (
     verificar_atualizacao, baixar_e_instalar, InfoAtualizacao, ErroAtualizacao,
 )
@@ -18,10 +19,21 @@ from core.updater import (
 class _WorkerAtualizacao(QThread):
     """Verifica atualização em background, sem travar a UI."""
     resultado = pyqtSignal(object)  # InfoAtualizacao ou None
+    erro = pyqtSignal(str)
+
+    def __init__(self, forcar: bool = False):
+        super().__init__()
+        self._forcar = forcar
 
     def run(self):
-        info = verificar_atualizacao()
-        self.resultado.emit(info)
+        try:
+            info = verificar_atualizacao(
+                forcar=self._forcar,
+                propagar_erros=self._forcar,
+            )
+            self.resultado.emit(info)
+        except ErroAtualizacao as e:
+            self.erro.emit(str(e))
 
 
 class _WorkerDownload(QThread):
@@ -52,6 +64,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.conn = conn
         self._fechando = False
+        self._checagem_manual = False
+        self._worker_update = None
+        self._worker_download = None
+        self._dlg_atualizacao = None
         self.setWindowTitle("VersionFile — Gerenciador de Regras LSP")
         self.resize(1200, 750)
 
@@ -78,6 +94,12 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(splitter)
 
+        self._label_versao = QLabel(f"Versão {__version__}", self)
+        self._label_versao.setObjectName("label_versao")
+        self._label_versao.setStyleSheet("color: #9D9D9D; padding: 0 6px;")
+        self.statusBar().setSizeGripEnabled(False)
+        self.statusBar().addPermanentWidget(self._label_versao)
+
         self.tree_panel.regra_selecionada.connect(self.editor_panel.abrir_regra)
         self.tree_panel.regra_desmarcada.connect(self.editor_panel.desabilitar_acoes)
 
@@ -103,6 +125,13 @@ class MainWindow(QMainWindow):
         act_cores = QAction("Personalizar cores do editor...", self)
         act_cores.triggered.connect(self._personalizar_cores)
         menu_config.addAction(act_cores)
+
+        menu_ajuda = barra.addMenu("Ajuda")
+        act_atualizar = QAction("Verificar atualizações...", self)
+        act_atualizar.triggered.connect(
+            lambda: self._iniciar_checagem_atualizacao(forcar=True)
+        )
+        menu_ajuda.addAction(act_atualizar)
 
         menu_arquivo.addSeparator()
 
@@ -141,18 +170,49 @@ class MainWindow(QMainWindow):
 
     # -- Atualização ----------------------------------------------------------
 
-    def _iniciar_checagem_atualizacao(self):
-        self._worker_update = _WorkerAtualizacao()
+    def _iniciar_checagem_atualizacao(self, forcar: bool = False):
+        if self._worker_update is not None and self._worker_update.isRunning():
+            if forcar:
+                QMessageBox.information(
+                    self,
+                    "Verificação em andamento",
+                    "A consulta de atualizações já está em andamento.",
+                )
+            return
+        self._checagem_manual = forcar
+        self._worker_update = _WorkerAtualizacao(forcar=forcar)
         self._worker_update.resultado.connect(self._tratar_resultado_atualizacao)
+        self._worker_update.erro.connect(self._tratar_erro_atualizacao)
         self._worker_update.start()
 
     def _tratar_resultado_atualizacao(self, info: InfoAtualizacao | None):
-        if info is None or self._fechando:
+        manual = self._checagem_manual
+        self._checagem_manual = False
+        if self._fechando:
+            return
+        if info is None:
+            if manual:
+                QMessageBox.information(
+                    self,
+                    "VersionFile atualizado",
+                    "Você já está usando a versão mais recente.",
+                )
             return
         self._mostrar_dialogo_atualizacao(info)
 
+    def _tratar_erro_atualizacao(self, mensagem: str):
+        manual = self._checagem_manual
+        self._checagem_manual = False
+        if manual and not self._fechando:
+            QMessageBox.warning(self, "Falha na verificação", mensagem)
+
     def _mostrar_dialogo_atualizacao(self, info: InfoAtualizacao):
+        if self._dlg_atualizacao is not None:
+            self._dlg_atualizacao.close()
         dlg = QDialog(self)
+        self._dlg_atualizacao = dlg
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dlg.destroyed.connect(lambda: setattr(self, "_dlg_atualizacao", None))
         dlg.setWindowTitle("Atualização disponível")
         dlg.setFixedSize(420, 200)
 

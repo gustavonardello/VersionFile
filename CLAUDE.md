@@ -46,6 +46,8 @@ auditoria/       # relatório e capturas da revisão técnica
 - Exportações em lote usam `core/exporter.py`, normalizam cada componente do caminho e não sobrescrevem arquivos.
 - Testes de caminhos no Windows devem comparar caminhos canônicos (`Path.resolve()`), pois runners podem fornecer aliases 8.3 para diretórios temporários.
 - O atualizador só oferece releases com instalador e arquivo `.sha256`, baixa para pasta temporária exclusiva e valida o digest antes de executar.
+- O cache de atualização dura uma hora apenas quando não há update; updates encontrados limpam o cache. `Ajuda > Verificar atualizações...` força a consulta e informa sucesso ou erro.
+- A janela principal mostra `core.version.__version__` em um `QLabel` permanente no canto direito da barra de status.
 - A tag de release deve coincidir com `core/version.py`; o workflow usa `checkout@v5`, `setup-python@v6` e `upload-artifact@v7`, testa, gera instalador+checksum e cria release como rascunho quando ela ainda não existe.
 
 ## Code conventions
