@@ -5,9 +5,21 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\testar_auto_update.ps1
 #
 # Pre-requisitos:
-#   - dist\VersionFile-1.0.0-Setup.exe (versao antiga, para instalar)
-#   - Release v1.1.0 publicada no GitHub com asset Setup.exe
+#   - instalador da versão anterior em dist\
+#   - release da versão nova publicada no GitHub com instalador e .sha256
 #   - Nenhuma instancia do VersionFile rodando
+
+param(
+    [switch]$ConfirmarAmbienteReal,
+    [string]$VersaoAntiga = "1.1.0",
+    [string]$VersaoNova = "1.2.0"
+)
+
+if (-not $ConfirmarAmbienteReal) {
+    Write-Host "Este teste instala versões, fecha processos e usa os dados do usuario atual."
+    Write-Host "Execute novamente com -ConfirmarAmbienteReal em um usuario ou VM de teste."
+    exit 2
+}
 
 $ErrorActionPreference = "Stop"
 
@@ -23,7 +35,7 @@ if ($souAdmin) {
 $dataDir       = "$env:LOCALAPPDATA\VersionFile"
 $installDir    = "$env:LOCALAPPDATA\Programs\VersionFile"
 $dbPath        = "$dataDir\versionfile.db"
-$setupAntigo   = ".\dist\VersionFile-1.0.0-Setup.exe"
+$setupAntigo   = ".\dist\VersionFile-$VersaoAntiga-Setup.exe"
 $cacheUpdate   = "$dataDir\config\update_check.json"
 $rodadas       = 5
 $falhasTotais  = 0
@@ -68,15 +80,15 @@ for ($i = 1; $i -le $rodadas; $i++) {
     # -- Garantir que nenhum VersionFile esta rodando ---------------------
     Matar-VersionFile
 
-    # -- Instalar versao antiga (1.0.0) -----------------------------------
-    Write-Host "  Instalando v1.0.0..."
+    # -- Instalar versão anterior -----------------------------------------
+    Write-Host "  Instalando v$VersaoAntiga..."
     $proc = Start-Process -FilePath $setupAntigo `
         -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" `
         -PassThru -Wait
-    Resultado "Instalacao v1.0.0 (exit code: $($proc.ExitCode))" ($proc.ExitCode -eq 0)
+    Resultado "Instalacao v$VersaoAntiga (exit code: $($proc.ExitCode))" ($proc.ExitCode -eq 0)
     Start-Sleep -Seconds 2
 
-    # Confirma que a versao instalada e 1.0.0
+    # Confirma que a versão anterior foi instalada
     $exeInstalado = Test-Path "$installDir\VersionFile.exe"
     Resultado "VersionFile.exe instalado" $exeInstalado
 
@@ -87,12 +99,13 @@ for ($i = 1; $i -le $rodadas; $i++) {
     }
 
     # -- Abrir o app e esperar o auto-update ------------------------------
-    Write-Host "  Abrindo VersionFile v1.0.0 e aguardando auto-update..."
+    Write-Host "  Abrindo VersionFile v$VersaoAntiga e aguardando auto-update..."
     $appProc = Start-Process -FilePath "$installDir\VersionFile.exe" -PassThru
+    Write-Host "  ACAO MANUAL: no aplicativo, clique em 'Instalar agora'." -ForegroundColor Yellow
 
-    # Aguarda ate 120s: o app deve detectar v1.1.0, baixar (~30MB),
+    # Aguarda ate 120s após o clique manual: o app deve baixar,
     # instalar silenciosamente, fechar e reabrir.
-    # O processo original (v1.0.0) deve morrer e um novo (v1.1.0) deve surgir.
+    # O processo original deve terminar e um processo da nova versão deve surgir.
     $timeout = 120
     $esperou = 0
     $processoOriginalMorreu = $false
@@ -103,20 +116,20 @@ for ($i = 1; $i -le $rodadas; $i++) {
 
         if ($appProc.HasExited) {
             $processoOriginalMorreu = $true
-            Write-Host "  Processo original (v1.0.0) terminou apos ${esperou}s."
+            Write-Host "  Processo original (v$VersaoAntiga) terminou apos ${esperou}s."
             break
         }
     }
 
     if (-not $processoOriginalMorreu) {
-        Write-Host "    FALHOU: app v1.0.0 nao fechou em ${timeout}s." -ForegroundColor Red
+        Write-Host "    FALHOU: app v$VersaoAntiga nao fechou em ${timeout}s." -ForegroundColor Red
         $falhasTotais++
         Matar-VersionFile
         continue
     }
 
     # Aguarda o instalador terminar e o app novo abrir
-    Write-Host "  Aguardando instalador terminar e app v1.1.0 reabrir..."
+    Write-Host "  Aguardando instalador terminar e app v$VersaoNova reabrir..."
     $esperouReabrir = 0
     $reabrirTimeout = 30
     $novoProcesso = $null
@@ -145,7 +158,7 @@ for ($i = 1; $i -le $rodadas; $i++) {
         }
         if ($regVer) {
             Write-Host "    Versao instalada (registro): $regVer"
-            Resultado "Versao e 1.1.0 (nao 1.0.0)" ($regVer -eq "1.1.0")
+            Resultado "Versao instalada e $VersaoNova" ($regVer -eq $VersaoNova)
         } else {
             Write-Host "    AVISO: nao foi possivel ler versao do registro" -ForegroundColor Yellow
         }

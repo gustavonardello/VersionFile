@@ -1,5 +1,30 @@
-from dataclasses import dataclass, field
+from contextlib import contextmanager
+from dataclasses import dataclass
+from functools import wraps
 from typing import Optional
+from uuid import uuid4
+
+
+@contextmanager
+def transacao(conn):
+    """Permite operações compostas com rollback, inclusive dentro de outra transação."""
+    nome = "operacao_" + uuid4().hex
+    conn.execute(f"SAVEPOINT {nome}")
+    try:
+        yield
+        conn.execute(f"RELEASE SAVEPOINT {nome}")
+    except BaseException:
+        conn.execute(f"ROLLBACK TO SAVEPOINT {nome}")
+        conn.execute(f"RELEASE SAVEPOINT {nome}")
+        raise
+
+
+def _atomica(func):
+    @wraps(func)
+    def executar(conn, *args, **kwargs):
+        with transacao(conn):
+            return func(conn, *args, **kwargs)
+    return executar
 
 
 @dataclass
@@ -51,23 +76,29 @@ def listar_clientes(conn) -> list[Cliente]:
     return [Cliente(**dict(r)) for r in rows]
 
 
+@_atomica
 def criar_cliente(conn, nome: str) -> Cliente:
+    nome = nome.strip()
+    if not nome:
+        raise ValueError("Informe o nome do cliente.")
     cur = conn.execute(
-        "INSERT INTO clientes (nome) VALUES (?) RETURNING *", (nome,)
+        "INSERT INTO clientes (nome) VALUES (?)", (nome,)
     )
-    row = cur.fetchone()
-    conn.commit()
+    row = conn.execute("SELECT * FROM clientes WHERE id = ?", (cur.lastrowid,)).fetchone()
     return Cliente(**dict(row))
 
 
+@_atomica
 def deletar_cliente(conn, cliente_id: int):
     conn.execute("DELETE FROM clientes WHERE id = ?", (cliente_id,))
-    conn.commit()
 
 
+@_atomica
 def renomear_cliente(conn, cliente_id: int, novo_nome: str):
+    novo_nome = novo_nome.strip()
+    if not novo_nome:
+        raise ValueError("Informe o nome do cliente.")
     conn.execute("UPDATE clientes SET nome = ? WHERE id = ?", (novo_nome, cliente_id))
-    conn.commit()
 
 
 # --- CRUD: Projetos ---
@@ -79,27 +110,27 @@ def listar_projetos(conn, cliente_id: int) -> list[Projeto]:
     return [Projeto(**dict(r)) for r in rows]
 
 
+@_atomica
 def criar_projeto(conn, cliente_id: int, nome: str, tipo: str, descricao: str = "") -> Projeto:
     cur = conn.execute(
-        "INSERT INTO projetos (cliente_id, nome, tipo, descricao) VALUES (?, ?, ?, ?) RETURNING *",
+        "INSERT INTO projetos (cliente_id, nome, tipo, descricao) VALUES (?, ?, ?, ?)",
         (cliente_id, nome, tipo, descricao),
     )
-    row = cur.fetchone()
-    conn.commit()
+    row = conn.execute("SELECT * FROM projetos WHERE id = ?", (cur.lastrowid,)).fetchone()
     return Projeto(**dict(row))
 
 
+@_atomica
 def deletar_projeto(conn, projeto_id: int):
     conn.execute("DELETE FROM projetos WHERE id = ?", (projeto_id,))
-    conn.commit()
 
 
+@_atomica
 def atualizar_projeto(conn, projeto_id: int, novo_nome: str, tipo: str, descricao: str = ""):
     conn.execute(
         "UPDATE projetos SET nome = ?, tipo = ?, descricao = ? WHERE id = ?",
         (novo_nome, tipo, descricao, projeto_id),
     )
-    conn.commit()
 
 
 # --- CRUD: Regras ---
@@ -111,27 +142,27 @@ def listar_regras(conn, projeto_id: int) -> list[Regra]:
     return [Regra(**dict(r)) for r in rows]
 
 
+@_atomica
 def criar_regra(conn, projeto_id: int, numero: str, descricao: str = "") -> Regra:
     cur = conn.execute(
-        "INSERT INTO regras (projeto_id, numero, descricao) VALUES (?, ?, ?) RETURNING *",
+        "INSERT INTO regras (projeto_id, numero, descricao) VALUES (?, ?, ?)",
         (projeto_id, numero, descricao),
     )
-    row = cur.fetchone()
-    conn.commit()
+    row = conn.execute("SELECT * FROM regras WHERE id = ?", (cur.lastrowid,)).fetchone()
     return Regra(**dict(row))
 
 
+@_atomica
 def deletar_regra(conn, regra_id: int):
     conn.execute("DELETE FROM regras WHERE id = ?", (regra_id,))
-    conn.commit()
 
 
+@_atomica
 def atualizar_regra(conn, regra_id: int, numero: str, descricao: str):
     conn.execute(
         "UPDATE regras SET numero = ?, descricao = ? WHERE id = ?",
         (numero, descricao, regra_id),
     )
-    conn.commit()
 
 
 # --- CRUD: Versões ---
@@ -143,6 +174,7 @@ def listar_versoes(conn, regra_id: int) -> list[Versao]:
     return [Versao(**{**dict(r), "atual": bool(r["atual"])}) for r in rows]
 
 
+@_atomica
 def criar_versao(conn, regra_id: int, conteudo: str = "", notas: str = "", tipo: str = "Criação") -> Versao:
     ultimo = conn.execute(
         "SELECT COALESCE(MAX(numero), 0) FROM versoes WHERE regra_id = ?", (regra_id,)
@@ -152,41 +184,55 @@ def criar_versao(conn, regra_id: int, conteudo: str = "", notas: str = "", tipo:
     conn.execute("UPDATE versoes SET atual = 0 WHERE regra_id = ?", (regra_id,))
     cur = conn.execute(
         """INSERT INTO versoes (regra_id, numero, conteudo, notas, atual, tipo)
-           VALUES (?, ?, ?, ?, 1, ?) RETURNING *""",
+           VALUES (?, ?, ?, ?, 1, ?)""",
         (regra_id, proximo, conteudo, notas, tipo),
     )
-    row = cur.fetchone()
-    conn.commit()
+    row = conn.execute("SELECT * FROM versoes WHERE id = ?", (cur.lastrowid,)).fetchone()
     return Versao(**{**dict(row), "atual": bool(row["atual"])})
 
 
+@_atomica
 def salvar_conteudo_versao(conn, versao_id: int, conteudo: str):
     conn.execute("UPDATE versoes SET conteudo = ? WHERE id = ?", (conteudo, versao_id))
-    conn.commit()
 
 
+@_atomica
 def atualizar_versao(conn, versao_id: int, status: str, notas: str):
     conn.execute(
         "UPDATE versoes SET status = ?, notas = ? WHERE id = ?",
         (status, notas, versao_id),
     )
-    conn.commit()
 
 
+@_atomica
 def atualizar_meta_versao(conn, versao_id: int, tipo: str, status: str, notas: str):
     conn.execute(
         "UPDATE versoes SET tipo = ?, status = ?, notas = ? WHERE id = ?",
         (tipo, status, notas, versao_id),
     )
-    conn.commit()
 
 
+@_atomica
 def definir_versao_atual(conn, regra_id: int, versao_id: int):
+    if not conn.execute(
+        "SELECT 1 FROM versoes WHERE id = ? AND regra_id = ?", (versao_id, regra_id)
+    ).fetchone():
+        raise ValueError("A versão não pertence à regra selecionada.")
     conn.execute("UPDATE versoes SET atual = 0 WHERE regra_id = ?", (regra_id,))
     conn.execute("UPDATE versoes SET atual = 1 WHERE id = ?", (versao_id,))
-    conn.commit()
 
 
+@_atomica
 def deletar_versao(conn, versao_id: int):
+    versao = conn.execute("SELECT * FROM versoes WHERE id = ?", (versao_id,)).fetchone()
+    if not versao:
+        return
+    restantes = conn.execute(
+        "SELECT id FROM versoes WHERE regra_id = ? AND id != ? ORDER BY numero DESC",
+        (versao["regra_id"], versao_id),
+    ).fetchall()
+    if not restantes:
+        raise ValueError("Não é possível excluir a única versão da regra.")
     conn.execute("DELETE FROM versoes WHERE id = ?", (versao_id,))
-    conn.commit()
+    if versao["atual"]:
+        definir_versao_atual(conn, versao["regra_id"], restantes[0]["id"])

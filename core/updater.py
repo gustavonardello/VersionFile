@@ -6,6 +6,8 @@ Nunca lança exceção que derrube o app — qualquer erro retorna None.
 """
 
 import json
+import hashlib
+import re
 import subprocess
 import tempfile
 import time
@@ -14,6 +16,7 @@ import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
+from urllib.parse import urlparse
 
 from core.paths import data_path
 from core.version import __version__
@@ -24,6 +27,7 @@ class InfoAtualizacao:
     versao: str
     url_release: str
     url_download: str
+    url_sha256: str
     tamanho_bytes: int
     notas: str
 
@@ -57,7 +61,7 @@ def _deve_verificar() -> bool:
         dados = json.loads(caminho.read_text(encoding="utf-8"))
         ultima = dados.get("ultima_checagem", 0)
         return (time.time() - ultima) > 20 * 3600
-    except (json.JSONDecodeError, OSError, KeyError):
+    except (json.JSONDecodeError, OSError, KeyError, TypeError, AttributeError):
         return True
 
 
@@ -124,11 +128,16 @@ def verificar_atualizacao(
 
         if asset_setup is None:
             return None
+        nome_checksum = asset_setup.get("name", "") + ".sha256"
+        asset_checksum = next((a for a in assets if a.get("name") == nome_checksum), None)
+        if asset_checksum is None:
+            return None
 
         return InfoAtualizacao(
             versao=tag_remota.lstrip("vV"),
             url_release=dados.get("html_url", ""),
             url_download=asset_setup.get("browser_download_url", ""),
+            url_sha256=asset_checksum.get("browser_download_url", ""),
             tamanho_bytes=asset_setup.get("size", 0),
             notas=dados.get("body", "") or "",
         )
@@ -158,12 +167,30 @@ def baixar_e_instalar(
     url = update_info.url_download
     tamanho_esperado = update_info.tamanho_bytes
 
-    if not url:
-        raise ErroAtualizacao("URL de download vazia.")
+    if not url or not update_info.url_sha256:
+        raise ErroAtualizacao("A release não contém instalador e checksum válidos.")
+    for endereco in (url, update_info.url_sha256):
+        parsed = urlparse(endereco)
+        if parsed.scheme != "https" or parsed.hostname != "github.com":
+            raise ErroAtualizacao("A atualização aponta para uma origem não confiável.")
+
+    try:
+        req_hash = urllib.request.Request(
+            update_info.url_sha256, headers={"User-Agent": "VersionFile-Updater"}
+        )
+        with urllib.request.urlopen(req_hash, timeout=10) as resposta:
+            texto_hash = resposta.read(4096).decode("ascii", errors="strict")
+        correspondencia = re.search(r"(?i)\b([0-9a-f]{64})\b", texto_hash)
+        if not correspondencia:
+            raise ValueError("checksum SHA-256 inválido")
+        hash_esperado = correspondencia.group(1).lower()
+    except Exception as e:
+        raise ErroAtualizacao(f"Falha ao obter checksum da atualização: {e}") from e
 
     # -- Download em streaming para pasta temporária ----------------------
     nome_arquivo = f"VersionFile-{update_info.versao}-Setup.exe"
-    destino = Path(tempfile.gettempdir()) / nome_arquivo
+    pasta_temporaria = Path(tempfile.mkdtemp(prefix="versionfile-update-"))
+    destino = pasta_temporaria / nome_arquivo
 
     try:
         req = urllib.request.Request(
@@ -172,10 +199,15 @@ def baixar_e_instalar(
         )
         resp = urllib.request.urlopen(req, timeout=30)
     except Exception as e:
+        try:
+            pasta_temporaria.rmdir()
+        except OSError:
+            pass
         raise ErroAtualizacao(f"Falha ao conectar para download: {e}") from e
 
     try:
         baixados = 0
+        hash_real = hashlib.sha256()
         chunk_size = 64 * 1024  # 64 KB
 
         with open(destino, "wb") as f:
@@ -184,6 +216,7 @@ def baixar_e_instalar(
                 if not chunk:
                     break
                 f.write(chunk)
+                hash_real.update(chunk)
                 baixados += len(chunk)
                 if on_progress:
                     on_progress(baixados, tamanho_esperado)
@@ -191,6 +224,7 @@ def baixar_e_instalar(
         # Remove arquivo parcial se o download falhou
         try:
             destino.unlink(missing_ok=True)
+            pasta_temporaria.rmdir()
         except OSError:
             pass
         raise ErroAtualizacao(f"Falha durante o download: {e}") from e
@@ -202,12 +236,20 @@ def baixar_e_instalar(
     if tamanho_esperado > 0 and tamanho_real != tamanho_esperado:
         try:
             destino.unlink(missing_ok=True)
+            pasta_temporaria.rmdir()
         except OSError:
             pass
         raise ErroAtualizacao(
             f"Tamanho do arquivo não confere: esperado {tamanho_esperado} "
             f"bytes, recebido {tamanho_real} bytes. Download corrompido."
         )
+    if hash_real.hexdigest() != hash_esperado:
+        try:
+            destino.unlink(missing_ok=True)
+            pasta_temporaria.rmdir()
+        except OSError:
+            pass
+        raise ErroAtualizacao("O checksum SHA-256 do instalador não confere.")
 
     # -- Dispara o instalador como processo destacado ---------------------
     try:
@@ -223,4 +265,9 @@ def baixar_e_instalar(
             creationflags=flags,
         )
     except Exception as e:
+        try:
+            destino.unlink(missing_ok=True)
+            pasta_temporaria.rmdir()
+        except OSError:
+            pass
         raise ErroAtualizacao(f"Falha ao iniciar o instalador: {e}") from e

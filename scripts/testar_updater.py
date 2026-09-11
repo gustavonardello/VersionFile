@@ -38,6 +38,7 @@ def testar(versao_simulada: str):
         print(f"  Versao remota:  {resultado.versao}")
         print(f"  URL release:   {resultado.url_release}")
         print(f"  URL download:  {resultado.url_download}")
+        print(f"  URL SHA-256:   {resultado.url_sha256}")
         print(f"  Tamanho:       {resultado.tamanho_bytes / (1024*1024):.1f} MB")
         print(f"  Notas:         {resultado.notas[:120]}...")
 

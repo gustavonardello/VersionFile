@@ -2,6 +2,7 @@ import sys
 import shutil
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import QTimer
 from database.db import initialize_db, get_connection, DB_PATH
 from ui.main_window import MainWindow
 from ui.migracao_dialog import garantir_dados
@@ -20,7 +21,9 @@ def _bootstrap():
 
 
 def main():
-    app = QApplication(sys.argv)
+    modo_smoke = "--smoke-test" in sys.argv
+    argumentos_qt = [arg for arg in sys.argv if arg != "--smoke-test"]
+    app = QApplication(argumentos_qt)
     app.setStyle("Fusion")
 
     icone = base_path() / "icone.ico"
@@ -41,10 +44,15 @@ def main():
         print(f"Banco de dados existente preservado: {DB_PATH}")
     conn = get_connection()
 
-    window = MainWindow(conn)
-    window.show()
-
-    sys.exit(app.exec())
+    try:
+        window = MainWindow(conn, checar_atualizacao=not modo_smoke)
+        window.show()
+        if modo_smoke:
+            QTimer.singleShot(500, window.close)
+        codigo = app.exec()
+    finally:
+        conn.close()
+    sys.exit(codigo)
 
 
 if __name__ == "__main__":

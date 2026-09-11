@@ -8,6 +8,14 @@
 #   - Instalador compilado pelo Inno Setup em dist\ (VersionFile-*.exe)
 #   - Nenhuma instancia do VersionFile rodando
 
+param([switch]$ConfirmarAmbienteReal)
+
+if (-not $ConfirmarAmbienteReal) {
+    Write-Host "Este teste instala e desinstala o VersionFile no usuario atual."
+    Write-Host "Execute novamente com -ConfirmarAmbienteReal em um usuario ou VM de teste."
+    exit 2
+}
+
 $ErrorActionPreference = "Stop"
 
 # Verifica que NAO esta rodando como admin — senao o teste de "sem UAC"
@@ -66,7 +74,7 @@ if (-not (Test-Path $dbPath)) {
     # Cria um banco SQLite minimo sintetico (so o header basta para o teste de hash)
     # Os primeiros 16 bytes de um SQLite sao "SQLite format 3\0"
     # Vamos usar Python para criar um banco valido minimo
-    python -c "import sqlite3; c=sqlite3.connect(r'$dbPath'); c.execute('CREATE TABLE teste(id INTEGER)'); c.close()"
+    py -3.11 -c "import sqlite3; c=sqlite3.connect(r'$dbPath'); c.execute('CREATE TABLE teste(id INTEGER)'); c.close()"
     $dbCriado = $true
     Write-Host "  Banco sintetico criado: $dbPath"
 } else {

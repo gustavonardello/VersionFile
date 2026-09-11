@@ -9,6 +9,9 @@ migração malsucedida nunca custe dados ao usuário.
 
 import shutil
 import sqlite3
+import os
+import tempfile
+from contextlib import closing
 from enum import Enum, auto
 from pathlib import Path
 
@@ -98,8 +101,37 @@ def importar_de(origem_banco: Path) -> list[str]:
 
     destino_banco = destino_dir / NOME_BANCO
     if not destino_banco.exists():
-        shutil.copy2(origem_banco, destino_banco)
-        copiados.append(NOME_BANCO)
+        if not eh_banco_versionfile(origem_banco):
+            raise ValueError("O arquivo de origem não é um banco válido do VersionFile.")
+        # Snapshot inclui transações já confirmadas no WAL de um banco aberto.
+        # Publica apenas o arquivo completo; link não sobrescreve outro destino.
+        with tempfile.TemporaryDirectory(prefix="migracao-", dir=destino_dir) as temporario:
+            snapshot = Path(temporario) / NOME_BANCO
+            uri = origem_banco.resolve().as_uri() + "?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True)) as origem:
+                with closing(sqlite3.connect(snapshot)) as destino:
+                    origem.backup(destino)
+                    if destino.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                        raise ValueError("O banco de origem não passou na verificação de integridade.")
+            try:
+                os.link(snapshot, destino_banco)
+            except FileExistsError:
+                pass
+            except OSError:
+                # Fallback para sistemas de arquivos sem hard links. O modo
+                # exclusivo impede sobrescrever um banco criado em paralelo.
+                try:
+                    with snapshot.open("rb") as origem_snapshot, destino_banco.open("xb") as destino_final:
+                        shutil.copyfileobj(origem_snapshot, destino_final)
+                except FileExistsError:
+                    pass
+                except BaseException:
+                    destino_banco.unlink(missing_ok=True)
+                    raise
+                else:
+                    copiados.append(NOME_BANCO)
+            else:
+                copiados.append(NOME_BANCO)
 
     origem_config = origem_banco.parent / "config"
     for nome in ARQUIVOS_CONFIG:

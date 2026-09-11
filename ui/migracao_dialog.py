@@ -12,6 +12,7 @@ daria a impressão de que os dados sumiram.
 """
 
 from pathlib import Path
+import sqlite3
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
@@ -148,7 +149,7 @@ def garantir_dados(parent=None) -> bool:
         origem = banco_legado()
         try:
             copiados = importar_de(origem)
-        except OSError as erro:
+        except (OSError, sqlite3.Error, ValueError) as erro:
             _aviso(
                 parent,
                 "Falha ao copiar seus dados",
@@ -186,7 +187,7 @@ def garantir_dados(parent=None) -> bool:
 
     try:
         importar_de(dlg.origem_escolhida)
-    except OSError as erro:
+    except (OSError, sqlite3.Error, ValueError) as erro:
         _aviso(
             parent,
             "Falha ao copiar seus dados",

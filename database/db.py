@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 from core.paths import data_path
@@ -35,7 +36,9 @@ def _precisa_migrar(conn) -> bool:
     create_sql = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='projetos'"
     ).fetchone()
-    if create_sql and ("'Regra'" not in create_sql[0] or "'Webservice'" not in create_sql[0]):
+    if create_sql and any(
+        f"'{tipo}'" not in create_sql[0] for tipo in ("Regra", "Webservice", "Relatório")
+    ):
         return True
 
     return False
@@ -50,7 +53,7 @@ def fazer_backup(conn) -> Path:
     o schema muda — e apagá-los sozinho contraria a garantia de que o programa
     nunca destrói dado do usuário.
     """
-    carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
+    carimbo = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     destino = DB_PATH.parent / f"versionfile.bak-{carimbo}.db"
     destino_conn = sqlite3.connect(destino)
     try:
@@ -61,14 +64,33 @@ def fazer_backup(conn) -> Path:
 
 
 def _migrar(conn):
-    """Aplica migrações incrementais sem recriar o banco."""
+    """Aplica migrações em uma transação e restaura as chaves estrangeiras."""
+    if not _precisa_migrar(conn):
+        return
+    if conn.in_transaction:
+        raise RuntimeError("A migração exige uma conexão sem transação pendente.")
+    foreign_keys = conn.execute("PRAGMA foreign_keys").fetchone()[0]
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        _migrar_tabelas(conn)
+        if conn.execute("PRAGMA foreign_key_check").fetchone():
+            raise sqlite3.IntegrityError("A migração encontrou referências inválidas no banco.")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.execute(f"PRAGMA foreign_keys = {foreign_keys}")
+
+
+def _migrar_tabelas(conn):
     colunas_versoes = [r[1] for r in conn.execute("PRAGMA table_info(versoes)").fetchall()]
     if "tipo" not in colunas_versoes:
         conn.execute(
             "ALTER TABLE versoes ADD COLUMN tipo TEXT NOT NULL DEFAULT 'Criação'"
         )
         conn.execute("UPDATE versoes SET tipo = 'Melhoria' WHERE numero > 1")
-        conn.commit()
 
     # Migração: adicionar coluna descricao e tipo 'Regra' ao CHECK de projetos
     colunas_projetos = [r[1] for r in conn.execute("PRAGMA table_info(projetos)").fetchall()]
@@ -77,10 +99,11 @@ def _migrar(conn):
     ).fetchone()
     precisa_migrar = (
         "descricao" not in colunas_projetos
-        or (create_sql and "'Regra'" not in create_sql[0])
+        or (create_sql and any(
+            f"'{tipo}'" not in create_sql[0] for tipo in ("Regra", "Webservice", "Relatório")
+        ))
     )
     if precisa_migrar:
-        conn.execute("PRAGMA foreign_keys = OFF")
         conn.execute("""
             CREATE TABLE projetos_new (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,44 +115,17 @@ def _migrar(conn):
                 UNIQUE(cliente_id, nome)
             )
         """)
-        conn.execute("""
-            INSERT INTO projetos_new (id, cliente_id, nome, tipo, criado_em)
-            SELECT id, cliente_id, nome, tipo, criado_em FROM projetos
-        """)
-        conn.execute("DROP TABLE projetos")
-        conn.execute("ALTER TABLE projetos_new RENAME TO projetos")
-        conn.commit()
-        conn.execute("PRAGMA foreign_keys = ON")
-
-    # Migração: adicionar tipos 'Webservice' e 'Relatório' ao CHECK de projetos
-    create_sql = conn.execute(
-        "SELECT sql FROM sqlite_master WHERE type='table' AND name='projetos'"
-    ).fetchone()
-    if create_sql and "'Webservice'" not in create_sql[0]:
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.execute("""
-            CREATE TABLE projetos_new (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                cliente_id  INTEGER NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-                nome        TEXT NOT NULL,
-                tipo        TEXT NOT NULL CHECK(tipo IN ('DID', 'Projeto', 'Regra', 'Webservice', 'Relatório')),
-                descricao   TEXT,
-                criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-                UNIQUE(cliente_id, nome)
-            )
-        """)
-        conn.execute("""
+        descricao = "descricao" if "descricao" in colunas_projetos else "NULL"
+        conn.execute(f"""
             INSERT INTO projetos_new (id, cliente_id, nome, tipo, descricao, criado_em)
-            SELECT id, cliente_id, nome, tipo, descricao, criado_em FROM projetos
+            SELECT id, cliente_id, nome, tipo, {descricao}, criado_em FROM projetos
         """)
         conn.execute("DROP TABLE projetos")
         conn.execute("ALTER TABLE projetos_new RENAME TO projetos")
-        conn.commit()
-        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def initialize_db():
-    with get_connection() as conn:
+    with closing(get_connection()) as conn:
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS clientes (
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,

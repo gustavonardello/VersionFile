@@ -1,10 +1,74 @@
 import json
-from pathlib import Path
+import os
+import shutil
+import tempfile
+from datetime import datetime
 from PyQt6.Qsci import QsciScintilla, QsciLexerCustom
 from PyQt6.QtGui import QColor, QFont
 from core.paths import data_path
 
 THEMES_PATH = data_path() / "config" / "themes.json"
+
+DEFAULT_THEME = {
+    "background": "#1E1E1E", "foreground": "#D4D4D4",
+    "keyword": "#569CD6", "function": "#DCDCAA", "type": "#4EC9B0",
+    "number": "#B5CEA8", "string": "#CE9178", "comment": "#6A9955",
+    "operator": "#D4D4D4", "identifier": "#D4D4D4", "constant": "#4FC1FF",
+    "caret_line": "#2A2D2E", "margin_background": "#252526",
+    "margin_foreground": "#858585", "selection": "#264F78",
+}
+
+
+def _ler_temas() -> dict:
+    """Lê temas com fallback seguro, sem alterar um arquivo inválido."""
+    try:
+        data = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("themes"), dict):
+            raise ValueError("estrutura de temas inválida")
+        temas = {}
+        for nome, tema in data["themes"].items():
+            if not isinstance(tema, dict):
+                continue
+            normalizado = dict(DEFAULT_THEME)
+            for chave, padrao in DEFAULT_THEME.items():
+                valor = tema.get(chave)
+                if isinstance(valor, str) and QColor(valor).isValid():
+                    normalizado[chave] = valor
+            if isinstance(tema.get("ui"), dict):
+                normalizado["ui"] = dict(tema["ui"])
+            temas[str(nome)] = normalizado
+        if not temas:
+            raise ValueError("nenhum tema válido")
+        ativo = data.get("active_theme")
+        if ativo not in temas:
+            ativo = next(iter(temas))
+        return {"themes": temas, "active_theme": ativo}
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError):
+        return {"themes": {"Escuro": dict(DEFAULT_THEME)}, "active_theme": "Escuro"}
+
+
+def _salvar_temas(data: dict):
+    THEMES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if THEMES_PATH.exists():
+        try:
+            atual = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
+            valido = isinstance(atual, dict) and isinstance(atual.get("themes"), dict)
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            valido = False
+        if not valido:
+            carimbo = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            shutil.copy2(THEMES_PATH, THEMES_PATH.with_name(f"themes.invalid-{carimbo}.json"))
+    descritor, temporario = tempfile.mkstemp(prefix="themes-", suffix=".json", dir=THEMES_PATH.parent)
+    try:
+        with os.fdopen(descritor, "w", encoding="utf-8") as arquivo:
+            json.dump(data, arquivo, indent=2, ensure_ascii=False)
+        os.replace(temporario, THEMES_PATH)
+    except BaseException:
+        try:
+            os.unlink(temporario)
+        except OSError:
+            pass
+        raise
 
 # Estilos (índices QScintilla)
 STYLE_DEFAULT    = 0
@@ -69,20 +133,33 @@ BUILTIN_FUNCTIONS = {
 
 
 def load_theme(name: str = None) -> dict:
-    data = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
-    active = name or data["active_theme"]
-    return data["themes"].get(active, list(data["themes"].values())[0])
+    data = _ler_temas()
+    active = name if name in data["themes"] else data["active_theme"]
+    return dict(data["themes"][active])
 
 
 def list_themes() -> list[str]:
-    data = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
+    data = _ler_temas()
     return list(data["themes"].keys())
 
 
 def save_active_theme(name: str):
-    data = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
+    data = _ler_temas()
+    if name not in data["themes"]:
+        raise ValueError(f'Tema "{name}" não encontrado.')
     data["active_theme"] = name
-    THEMES_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    _salvar_temas(data)
+
+
+def salvar_cores_tema(cores: dict):
+    data = _ler_temas()
+    tema_ativo = data["active_theme"]
+    validas = {
+        chave: valor for chave, valor in cores.items()
+        if chave in DEFAULT_THEME and isinstance(valor, str) and QColor(valor).isValid()
+    }
+    data["themes"][tema_ativo].update(validas)
+    _salvar_temas(data)
 
 
 def gerar_stylesheet_ui(tema: dict) -> str:

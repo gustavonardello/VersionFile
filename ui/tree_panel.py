@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QMenu, QMessageBox, QLineEdit, QCheckBox, QLabel,
@@ -7,7 +8,9 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QColor, QPixmap
 import database.models as M
 from ui.dialogs import DialogCliente, DialogProjeto, DialogRegra, DialogRegraRelatorio
+from ui.errors import mostrar_erro
 from core.paths import base_path, data_path
+from core.text_utils import normalizar_busca
 
 NODE_CLIENTE = "cliente"
 NODE_PROJETO = "projeto"
@@ -112,6 +115,19 @@ class TreePanel(QWidget):
                 item_p.setExpanded(expandir_p)
 
     def carregar(self, ids_novos_clientes: set = None, ids_novos_projetos: set = None):
+        selecionado = self.tree.currentItem()
+        dados = self._dados(selecionado) if selecionado else {}
+        try:
+            self._carregar_itens(ids_novos_clientes, ids_novos_projetos)
+        finally:
+            self.tree.blockSignals(False)
+        self._aplicar_filtro()
+        if dados.get("tipo") == NODE_REGRA:
+            self._selecionar_regra(dados["id"])
+        if not self.tree.selectedItems():
+            self.regra_desmarcada.emit()
+
+    def _carregar_itens(self, ids_novos_clientes=None, ids_novos_projetos=None):
         primeira_vez = self.tree.topLevelItemCount() == 0
         estado = self._carregar_estado_salvo() if primeira_vez else self._estado_expandido()
 
@@ -182,7 +198,7 @@ class TreePanel(QWidget):
         self._salvar_estado()
 
     def _aplicar_filtro(self):
-        termo = self.campo_busca.text().strip().lower()
+        termo = normalizar_busca(self.campo_busca.text().strip())
         buscar_conteudo = self.check_conteudo.isChecked()
 
         if not termo:
@@ -193,29 +209,26 @@ class TreePanel(QWidget):
         # Regras que batem com conteúdo (busca no banco)
         regras_conteudo: set[int] = set()
         if buscar_conteudo:
-            rows = self.conn.execute(
-                """SELECT DISTINCT r.id FROM regras r
-                   JOIN versoes v ON v.regra_id = r.id
-                   WHERE lower(v.conteudo) LIKE ?""",
-                (f"%{termo}%",)
-            ).fetchall()
-            regras_conteudo = {r["id"] for r in rows}
+            rows = self.conn.execute("SELECT regra_id, conteudo FROM versoes").fetchall()
+            regras_conteudo = {
+                r["regra_id"] for r in rows if termo in normalizar_busca(r["conteudo"])
+            }
 
         encontrados = 0
         for i in range(self.tree.topLevelItemCount()):
             item_c = self.tree.topLevelItem(i)
-            bate_cliente = termo in item_c.text(0).lower()
+            bate_cliente = termo in normalizar_busca(item_c.text(0))
             tem_cliente = bate_cliente
 
             for j in range(item_c.childCount()):
                 item_p = item_c.child(j)
-                bate_projeto = termo in item_p.text(0).lower()
+                bate_projeto = termo in normalizar_busca(item_p.text(0))
                 tem_projeto = bate_projeto
 
                 for k in range(item_p.childCount()):
                     item_r = item_p.child(k)
                     d = self._dados(item_r)
-                    texto = item_r.text(0).lower()
+                    texto = normalizar_busca(item_r.text(0))
 
                     bate = (
                         bate_cliente
@@ -325,24 +338,50 @@ class TreePanel(QWidget):
 
     def _novo_cliente(self):
         dlg = DialogCliente(self)
-        if dlg.exec() and dlg.nome:
+        while dlg.exec() and dlg.nome:
             try:
                 c = M.criar_cliente(self.conn, dlg.nome)
-                self.carregar(ids_novos_clientes={c.id})
+            except sqlite3.IntegrityError as e:
+                mensagem = (
+                    f'Já existe um cliente com o nome "{dlg.nome}". Informe outro nome.'
+                    if "clientes.nome" in str(e) else str(e)
+                )
+                QMessageBox.warning(self, "Cliente não cadastrado", mensagem)
+                dlg.campo_nome.selectAll()
             except Exception as e:
                 QMessageBox.warning(self, "Erro", str(e))
+                return
+            else:
+                self.carregar(ids_novos_clientes={c.id})
+                return
 
     def _renomear_cliente(self, cliente_id, _item):
-        dlg = DialogCliente(self)
-        if dlg.exec() and dlg.nome:
-            M.renomear_cliente(self.conn, cliente_id, dlg.nome)
-            self.carregar()
+        dlg = DialogCliente(self, nome_atual=_item.text(0))
+        while dlg.exec() and dlg.nome:
+            try:
+                M.renomear_cliente(self.conn, cliente_id, dlg.nome)
+            except sqlite3.IntegrityError as e:
+                mensagem = (
+                    f'Já existe um cliente com o nome "{dlg.nome}". Informe outro nome.'
+                    if "clientes.nome" in str(e) else str(e)
+                )
+                QMessageBox.warning(self, "Cliente não renomeado", mensagem)
+                dlg.campo_nome.selectAll()
+            except Exception as e:
+                QMessageBox.warning(self, "Erro", str(e))
+                return
+            else:
+                self.carregar()
+                return
 
     def _excluir_cliente(self, cliente_id):
         if QMessageBox.question(self, "Confirmar", "Excluir cliente e todos os dados?") \
                 == QMessageBox.StandardButton.Yes:
-            M.deletar_cliente(self.conn, cliente_id)
-            self.carregar()
+            try:
+                M.deletar_cliente(self.conn, cliente_id)
+                self.carregar()
+            except Exception as erro:
+                mostrar_erro(self, "Cliente não excluído", erro)
 
     def _novo_projeto(self, cliente_id):
         dlg = DialogProjeto(self)
@@ -367,14 +406,20 @@ class TreePanel(QWidget):
         )
         dlg.setWindowTitle("Editar projeto")
         if dlg.exec() and dlg.nome:
-            M.atualizar_projeto(self.conn, projeto_id, dlg.nome, dlg.tipo, dlg.descricao)
-            self.carregar()
+            try:
+                M.atualizar_projeto(self.conn, projeto_id, dlg.nome, dlg.tipo, dlg.descricao)
+                self.carregar()
+            except Exception as e:
+                QMessageBox.warning(self, "Erro", str(e))
 
     def _excluir_projeto(self, projeto_id):
         if QMessageBox.question(self, "Confirmar", "Excluir projeto e todas as regras?") \
                 == QMessageBox.StandardButton.Yes:
-            M.deletar_projeto(self.conn, projeto_id)
-            self.carregar()
+            try:
+                M.deletar_projeto(self.conn, projeto_id)
+                self.carregar()
+            except Exception as erro:
+                mostrar_erro(self, "Projeto não excluído", erro)
 
     def _nova_regra(self, projeto_id):
         proj = self.conn.execute(
@@ -386,8 +431,9 @@ class TreePanel(QWidget):
             dlg = DialogRegra(self)
         if dlg.exec() and dlg.numero:
             try:
-                regra = M.criar_regra(self.conn, projeto_id, dlg.numero, dlg.descricao)
-                M.criar_versao(self.conn, regra.id)
+                with M.transacao(self.conn):
+                    regra = M.criar_regra(self.conn, projeto_id, dlg.numero, dlg.descricao)
+                    M.criar_versao(self.conn, regra.id)
                 self.carregar(
                     ids_novos_clientes={proj["cliente_id"]} if proj else set(),
                     ids_novos_projetos={projeto_id},
@@ -439,5 +485,8 @@ class TreePanel(QWidget):
     def _excluir_regra(self, regra_id):
         if QMessageBox.question(self, "Confirmar", "Excluir regra e todas as versões?") \
                 == QMessageBox.StandardButton.Yes:
-            M.deletar_regra(self.conn, regra_id)
-            self.carregar()
+            try:
+                M.deletar_regra(self.conn, regra_id)
+                self.carregar()
+            except Exception as erro:
+                mostrar_erro(self, "Regra não excluída", erro)

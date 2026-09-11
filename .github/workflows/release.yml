@@ -47,6 +47,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller==6.11.1
 
+      - name: Executar testes de regressão
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QPA_FONTDIR: C:\Windows\Fonts
+        run: python -m unittest discover -s tests -v
+
       - name: Gerar o executável
         run: pyinstaller --noconfirm VersionFile.spec
 
@@ -81,13 +88,18 @@ jobs:
             throw "Instalador tem apenas $([math]::Round($tamanho, 1)) MB — pequeno demais, build provavelmente incompleto."
           }
 
+          $hash = (Get-FileHash -LiteralPath $instalador.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($instalador.Name)" | Set-Content -LiteralPath "$($instalador.FullName).sha256" -Encoding ascii
+
       # Disponível em toda execução, inclusive nos disparos manuais: permite
       # baixar e testar o instalador sem publicar nada.
       - name: Guardar o instalador como artefato
         uses: actions/upload-artifact@v4
         with:
           name: VersionFile-Setup
-          path: dist/VersionFile-*-Setup.exe
+          path: |
+            dist/VersionFile-*-Setup.exe
+            dist/VersionFile-*-Setup.exe.sha256
           retention-days: 30
 
       # Se a release da tag já existir (criada à mão, com as notas escritas),
@@ -103,18 +115,19 @@ jobs:
           $tag = '${{ github.ref_name }}'
           $versao = $tag -replace '^v', ''
           $instalador = "dist\VersionFile-$versao-Setup.exe"
+          $checksum = "$instalador.sha256"
 
-          if (-not (Test-Path $instalador)) {
-            throw "Instalador $instalador não encontrado."
+          if (-not (Test-Path $instalador) -or -not (Test-Path $checksum)) {
+            throw "Instalador ou checksum não encontrado."
           }
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag já existe — anexando o instalador."
-            gh release upload $tag $instalador --clobber
+            gh release upload $tag $instalador $checksum --clobber
           } else {
             Write-Host "Release $tag não existe — criando como rascunho."
-            gh release create $tag $instalador --draft --generate-notes --title $tag
+            gh release create $tag $instalador $checksum --draft --generate-notes --title $tag
           }
 
           if ($LASTEXITCODE -ne 0) {

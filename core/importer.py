@@ -46,80 +46,52 @@ def escanear_pasta(raiz: Path) -> list[ItemCliente]:
       - 1 nível:  raiz / arquivo            (cliente e projeto = nome da pasta raiz)
     Retorna lista de ItemCliente com a hierarquia encontrada.
     """
-    clientes: list[ItemCliente] = []
+    if not raiz.is_dir():
+        raise NotADirectoryError(f"Pasta não encontrada: {raiz}")
 
-    # Tenta estrutura de 3 níveis (padrão)
-    for pasta_cliente in sorted(raiz.iterdir()):
-        if not pasta_cliente.is_dir():
-            continue
+    clientes: dict[str, ItemCliente] = {}
 
-        cliente = ItemCliente(nome=pasta_cliente.name)
+    def arquivos_em(pasta: Path) -> list[ArquivoRegra]:
+        return [
+            ArquivoRegra(caminho=arquivo, numero=arquivo.stem)
+            for arquivo in sorted(pasta.iterdir())
+            if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES_VALIDAS
+        ]
 
-        for pasta_proj in sorted(pasta_cliente.iterdir()):
-            if not pasta_proj.is_dir():
-                continue
+    def adicionar(cliente_nome: str, projeto_nome: str, arquivos: list[ArquivoRegra]):
+        if not arquivos:
+            return
+        cliente = clientes.setdefault(cliente_nome, ItemCliente(cliente_nome))
+        projeto = next((p for p in cliente.projetos if p.nome == projeto_nome), None)
+        if projeto is None:
+            projeto = ItemProjeto(projeto_nome, _inferir_tipo(projeto_nome))
+            cliente.projetos.append(projeto)
+        existentes = {a.caminho for a in projeto.regras}
+        projeto.regras.extend(a for a in arquivos if a.caminho not in existentes)
 
-            projeto = ItemProjeto(
-                nome=pasta_proj.name,
-                tipo=_inferir_tipo(pasta_proj.name),
-            )
+    # Arquivos soltos pertencem ao cliente/projeto com o nome da raiz.
+    adicionar(raiz.name, raiz.name, arquivos_em(raiz))
 
-            for arquivo in sorted(pasta_proj.iterdir()):
-                if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES_VALIDAS:
-                    projeto.regras.append(ArquivoRegra(
-                        caminho=arquivo,
-                        numero=arquivo.stem,
-                    ))
+    for primeiro in sorted(p for p in raiz.iterdir() if p.is_dir()):
+        # raiz/projeto/arquivo
+        adicionar(raiz.name, primeiro.name, arquivos_em(primeiro))
 
-            if projeto.regras:
-                cliente.projetos.append(projeto)
+        # raiz/cliente/projeto/arquivo; coexistem com os níveis acima.
+        for segundo in sorted(p for p in primeiro.iterdir() if p.is_dir()):
+            adicionar(primeiro.name, segundo.name, arquivos_em(segundo))
 
-        if cliente.projetos:
-            clientes.append(cliente)
-
-    if clientes:
-        return clientes
-
-    # Fallback: estrutura de 2 níveis (raiz / projeto / arquivo)
-    cliente_fallback = ItemCliente(nome=raiz.name)
-    for pasta_proj in sorted(raiz.iterdir()):
-        if not pasta_proj.is_dir():
-            continue
-
-        projeto = ItemProjeto(
-            nome=pasta_proj.name,
-            tipo=_inferir_tipo(pasta_proj.name),
-        )
-
-        for arquivo in sorted(pasta_proj.iterdir()):
-            if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES_VALIDAS:
-                projeto.regras.append(ArquivoRegra(
-                    caminho=arquivo,
-                    numero=arquivo.stem,
-                ))
-
-        if projeto.regras:
-            cliente_fallback.projetos.append(projeto)
-
-    if cliente_fallback.projetos:
-        return [cliente_fallback]
-
-    # Fallback: estrutura de 1 nível (raiz / arquivo)
-    projeto_fallback = ItemProjeto(nome=raiz.name, tipo=_inferir_tipo(raiz.name))
-    for arquivo in sorted(raiz.iterdir()):
-        if arquivo.is_file() and arquivo.suffix.lower() in EXTENSOES_VALIDAS:
-            projeto_fallback.regras.append(ArquivoRegra(
-                caminho=arquivo,
-                numero=arquivo.stem,
-            ))
-
-    if projeto_fallback.regras:
-        return [ItemCliente(nome=raiz.name, projetos=[projeto_fallback])]
-
-    return []
+    for cliente in clientes.values():
+        cliente.projetos.sort(key=lambda p: p.nome.casefold())
+    return sorted(clientes.values(), key=lambda c: c.nome.casefold())
 
 
 def importar_para_banco(conn, clientes: list[ItemCliente], notas: str = "Importação inicial") -> dict:
+    import database.models as M
+    with M.transacao(conn):
+        return _importar_para_banco(conn, clientes, notas)
+
+
+def _importar_para_banco(conn, clientes: list[ItemCliente], notas: str) -> dict:
     """
     Insere toda a hierarquia no banco.
     Pula entradas que já existem (mesmo nome de cliente+projeto / mesmo número de regra).
@@ -161,8 +133,8 @@ def importar_para_banco(conn, clientes: list[ItemCliente], notas: str = "Importa
                     contagem["pulados"] += 1
                     continue
 
-                regra = M.criar_regra(conn, projeto_id, arq.numero, arq.descricao)
                 conteudo = _ler_arquivo(arq.caminho)
+                regra = M.criar_regra(conn, projeto_id, arq.numero, arq.descricao)
                 M.criar_versao(conn, regra.id, conteudo, notas)
                 contagem["regras"] += 1
 

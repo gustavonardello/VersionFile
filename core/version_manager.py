@@ -46,8 +46,9 @@ def sugerir_tipo_para_regra(conn, regra_id: int, conteudo_novo: str) -> str:
 
 def nova_versao_de_arquivo(conn, regra_id: int, caminho: str, notas: str = "", tipo: str = "") -> object:
     """Cria uma nova versão importando o conteúdo de um arquivo .txt/.lsp."""
-    with open(caminho, "r", encoding="utf-8", errors="replace") as f:
-        conteudo = f.read()
+    from pathlib import Path
+    from core.importer import _ler_arquivo
+    conteudo = _ler_arquivo(Path(caminho))
     tipo_final = tipo or sugerir_tipo_para_regra(conn, regra_id, conteudo)
     return criar_versao(conn, regra_id, conteudo, notas, tipo_final)
 

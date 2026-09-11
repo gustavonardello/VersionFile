@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -9,13 +8,14 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 
 import database.models as M
+from core.exporter import sanitizar_nome, exportar_arquivo
 
 VERSAO_OPTS = ["Atual", "Mais recente", "Todas as versões"]
 
 
 def _sanitizar(texto: str) -> str:
     """Remove caracteres inválidos para nomes de arquivo."""
-    return re.sub(r'[\\/:*?"<>|]', "", texto).strip()
+    return sanitizar_nome(texto) if texto else ""
 
 
 class ExportDialog(QDialog):
@@ -180,7 +180,10 @@ class ExportDialog(QDialog):
             1 for i in range(total)
             if item.child(i).checkState(0) == Qt.CheckState.Checked
         )
-        if marcados == 0:
+        parciais = any(
+            item.child(i).checkState(0) == Qt.CheckState.PartiallyChecked for i in range(total)
+        )
+        if marcados == 0 and not parciais:
             item.setCheckState(0, Qt.CheckState.Unchecked)
         elif marcados == total:
             item.setCheckState(0, Qt.CheckState.Checked)
@@ -266,21 +269,16 @@ class ExportDialog(QDialog):
                 para_exportar = versoes
 
             desc_sanitizada = _sanitizar(dados["descricao"])
-            base_nome = dados["numero"]
+            base_nome = _sanitizar(dados["numero"])
             if desc_sanitizada:
                 base_nome += f" - {desc_sanitizada}"
 
             for versao in para_exportar:
                 try:
-                    if subpastas:
-                        pasta_dest = destino_path / dados["cliente"] / dados["projeto"]
-                    else:
-                        pasta_dest = destino_path
-                    pasta_dest.mkdir(parents=True, exist_ok=True)
-
                     sufixo = f"_v{versao.numero}" if opcao_versao == "Todas as versões" else ""
                     nome_arquivo = f"{base_nome}{sufixo}{ext}"
-                    (pasta_dest / nome_arquivo).write_text(versao.conteudo, encoding="utf-8")
+                    pastas = [dados["cliente"], dados["projeto"]] if subpastas else []
+                    exportar_arquivo(destino_path, pastas, nome_arquivo, versao.conteudo)
                     exportados += 1
                 except Exception as e:
                     erros.append(f"{dados['numero']}: {e}")

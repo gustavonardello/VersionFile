@@ -34,8 +34,15 @@ Status de versão: `Em desenvolvimento`, `Em teste`, `Produção`, `Depreciada`
 
 ### Importação e exportação
 - Importação de estrutura de pastas existente (`.lsp` / `.txt`)
+- Suporte simultâneo a arquivos na raiz e estruturas de 2 ou 3 níveis
 - Exportação de regra individual (`.lsp`)
 - Exportação em lote de múltiplas regras via `Arquivo → Exportar múltiplas regras`
+- Nomes inválidos são normalizados e arquivos existentes não são sobrescritos
+
+### Configuração
+- Importação disponível em `Arquivo → Importar estrutura de pastas`
+- Personalização das cores em `Configurações → Personalizar cores do editor`
+- Recuperação automática com tema padrão quando a configuração estiver inválida
 
 ### Histórico
 - Visualização de todas as versões com cards detalhados
@@ -50,15 +57,28 @@ Status de versão: `Em desenvolvimento`, `Em teste`, `Produção`, `Depreciada`
 
 ```bash
 pip install -r requirements.txt
-python main.py
+py -3.11 main.py
 ```
+
+## Testes
+
+```bash
+py -3.11 -m unittest discover -s tests -v
+py -3.11 scripts/validar_interface.py
+```
+
+Depois de empacotar, `dist/VersionFile/VersionFile.exe --smoke-test` abre a
+interface sem consultar atualizações e encerra automaticamente.
 
 ## Build do executável
 
 ```bash
 pyinstaller VersionFile.spec
-# Saída: dist/VersionFile.exe
+# Saída: dist/VersionFile/VersionFile.exe
 ```
+
+O instalador publicado inclui um arquivo `.sha256`; o atualizador exige e
+confere esse checksum antes de executar uma nova versão.
 
 ## Download
 

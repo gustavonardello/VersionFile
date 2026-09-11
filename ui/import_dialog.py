@@ -1,4 +1,7 @@
 from pathlib import Path
+from contextlib import closing
+import sqlite3
+from copy import deepcopy
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFileDialog, QTreeWidget, QTreeWidgetItem, QLineEdit,
@@ -18,15 +21,19 @@ class _WorkerImport(QThread):
     concluido = pyqtSignal(dict)
     erro = pyqtSignal(str)
 
-    def __init__(self, conn, clientes, notas):
+    def __init__(self, caminho_banco, clientes, notas):
         super().__init__()
-        self.conn = conn
+        self.caminho_banco = caminho_banco
         self.clientes = clientes
         self.notas = notas
 
     def run(self):
         try:
-            result = importar_para_banco(self.conn, self.clientes, self.notas)
+            uri = Path(self.caminho_banco).resolve().as_uri() + "?mode=rw"
+            with closing(sqlite3.connect(uri, uri=True)) as conn:
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA foreign_keys = ON")
+                result = importar_para_banco(conn, self.clientes, self.notas)
             self.concluido.emit(result)
         except Exception as e:
             self.erro.emit(str(e))
@@ -38,6 +45,7 @@ class ImportDialog(QDialog):
     def __init__(self, conn, parent=None):
         super().__init__(parent)
         self.conn = conn
+        self._worker = None
         self._clientes_escaneados: list[ItemCliente] = []
         self._pasta_raiz: Path | None = None
 
@@ -134,12 +142,15 @@ class ImportDialog(QDialog):
         self._escanear()
 
     def _escanear(self):
+        self._clientes_escaneados = []
+        self.btn_importar.setEnabled(False)
         self.tree_preview.clear()
         self.label_stats.setText("Escaneando...")
 
         try:
             self._clientes_escaneados = escanear_pasta(self._pasta_raiz)
         except Exception as e:
+            self.label_stats.setText("Falha ao escanear a pasta.")
             QMessageBox.critical(self, "Erro", f"Falha ao escanear pasta:\n{e}")
             return
 
@@ -186,18 +197,39 @@ class ImportDialog(QDialog):
         self.btn_importar.setEnabled(True)
 
     def _iniciar_importacao(self):
+        caminho = next(
+            (r[2] for r in self.conn.execute("PRAGMA database_list") if r[1] == "main"), ""
+        )
+        if not caminho:
+            QMessageBox.warning(self, "Importação", "A importação exige um banco salvo em arquivo.")
+            return
+        clientes = deepcopy(self._clientes_escaneados)
+        for cliente in clientes:
+            for projeto in cliente.projetos:
+                if _inferir_tipo(projeto.nome) == "Projeto":
+                    projeto.tipo = self.combo_tipo_default.currentText()
         self.btn_importar.setEnabled(False)
         self.btn_cancelar.setEnabled(False)
         self.progress.setVisible(True)
 
         self._worker = _WorkerImport(
-            self.conn,
-            self._clientes_escaneados,
+            caminho,
+            clientes,
             self.campo_notas.text().strip() or "Importação inicial",
         )
         self._worker.concluido.connect(self._on_concluido)
         self._worker.erro.connect(self._on_erro)
         self._worker.start()
+
+    def reject(self):
+        if self._worker is None or not self._worker.isRunning():
+            super().reject()
+
+    def closeEvent(self, event):
+        if self._worker is not None and self._worker.isRunning():
+            event.ignore()
+        else:
+            super().closeEvent(event)
 
     def _on_concluido(self, resultado: dict):
         self.progress.setVisible(False)

@@ -19,9 +19,11 @@ from core.highlighter import (
 )
 from core.version_manager import diff_versoes, sugerir_tipo_para_regra
 from core.paths import data_path
+from core.exporter import sanitizar_nome
 from ui.dialogs import DialogVersao, DialogEditarVersao
 from ui.diff_viewer import DiffViewer
 from ui.version_history import VersionHistory
+from ui.errors import mostrar_erro
 
 STATUS_CORES = {
     "Em desenvolvimento": "#569CD6",
@@ -43,6 +45,7 @@ class EditorPanel(QWidget):
         self._versao_atual = None
         self._lexer = None
         self._carregando = False
+        self._salvando = False
 
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
@@ -323,10 +326,20 @@ class EditorPanel(QWidget):
         try:
             p = data_path() / "config" / "ui_prefs.json"
             if p.exists():
-                return json.loads(p.read_text(encoding="utf-8"))
+                prefs = json.loads(p.read_text(encoding="utf-8"))
+                return prefs if isinstance(prefs, dict) else {}
         except Exception:
             pass
         return {}
+
+    def recarregar_tema(self):
+        """Aplica novamente o tema ativo após a personalização de cores."""
+        self._lexer._theme = load_theme()
+        self._lexer._apply_theme()
+        modo = self._bg_mode
+        self._bg_mode = "white" if modo == "black" else "black"
+        self._set_editor_background(modo)
+        self.editor.recolor()
 
     def _salvar_prefs(self, prefs: dict):
         try:
@@ -464,12 +477,14 @@ class EditorPanel(QWidget):
 
     def salvar_se_pendente(self):
         """Salva imediatamente se houver um autosave pendente ou versão aberta."""
-        if self._autosave_timer.isActive():
+        if self._versao_atual and self.editor.text() != self._versao_atual.conteudo:
             self._autosave_timer.stop()
-            self._salvar_tudo()
+            return self._salvar_tudo()
+        return True
 
     def abrir_regra(self, regra_id: int):
-        self.salvar_se_pendente()
+        if not self.salvar_se_pendente():
+            return
         self._regra_id = regra_id
         regra = self.conn.execute(
             "SELECT r.numero, r.descricao, p.nome as proj, c.nome as cli "
@@ -502,11 +517,15 @@ class EditorPanel(QWidget):
         self.btn_diff.setEnabled(habilitado)
 
     def desabilitar_acoes(self):
+        if not self.salvar_se_pendente():
+            return
         self._regra_id = None
         self._versao_atual = None
         self._set_acoes_habilitadas(False)
 
-    def _recarregar_versoes(self):
+    def _recarregar_versoes(self, versao_id=None):
+        if not self.salvar_se_pendente():
+            return
         self.combo_versoes.blockSignals(True)
         self.combo_versoes.clear()
         versoes = M.listar_versoes(self.conn, self._regra_id)
@@ -520,12 +539,25 @@ class EditorPanel(QWidget):
         if versoes:
             # Seleciona a versão atual por padrão
             idx = next((i for i, v in enumerate(versoes) if v.atual), 0)
+            if versao_id is not None:
+                idx = next((i for i, v in enumerate(versoes) if v.id == versao_id), idx)
+            self.combo_versoes.blockSignals(True)
             self.combo_versoes.setCurrentIndex(idx)
+            self.combo_versoes.blockSignals(False)
             self._carregar_versao(idx)
+        else:
+            self._versao_atual = None
+            self._carregando = True
+            self.editor.clear()
+            self._carregando = False
+            self.label_status.clear()
+            self.label_notas.clear()
+            self.label_info.clear()
+            self.label_versao_info.clear()
 
     def _on_focus_changed(self, old, new):
         """Salva imediatamente quando o foco sai do editor."""
-        if old is self.editor and not self._carregando and self._versao_atual:
+        if old is self.editor and not self._carregando and not self._salvando and self._versao_atual:
             self._autosave_timer.stop()
             self._salvar_tudo()
 
@@ -536,6 +568,14 @@ class EditorPanel(QWidget):
     def _carregar_versao(self, index: int):
         versao = self.combo_versoes.itemData(index)
         if not versao:
+            return
+        if not self.salvar_se_pendente():
+            self.combo_versoes.blockSignals(True)
+            for idx in range(self.combo_versoes.count()):
+                if self.combo_versoes.itemData(idx).id == self._versao_atual.id:
+                    self.combo_versoes.setCurrentIndex(idx)
+                    break
+            self.combo_versoes.blockSignals(False)
             return
         self._carregando = True
         self._autosave_timer.stop()
@@ -556,15 +596,17 @@ class EditorPanel(QWidget):
     def _editar_versao(self):
         if not self._versao_atual:
             return
+        if not self.salvar_se_pendente():
+            return
         dlg = DialogEditarVersao(self, versao=self._versao_atual)
         if dlg.exec():
-            M.atualizar_meta_versao(
-                self.conn,
-                self._versao_atual.id,
-                dlg.tipo,
-                dlg.status,
-                dlg.notas,
-            )
+            try:
+                M.atualizar_meta_versao(
+                    self.conn, self._versao_atual.id, dlg.tipo, dlg.status, dlg.notas,
+                )
+            except Exception as erro:
+                mostrar_erro(self, "Versão não atualizada", erro)
+                return
             idx = self.combo_versoes.currentIndex()
             self._recarregar_versoes()
             self.combo_versoes.setCurrentIndex(idx)
@@ -582,21 +624,40 @@ class EditorPanel(QWidget):
             self.combo_versoes.setCurrentIndex(idx - 1)
 
     def _salvar_tudo(self):
+        if self._salvando:
+            return False
         if not self._versao_atual:
-            return
-        M.salvar_conteudo_versao(self.conn, self._versao_atual.id, self.editor.text())
+            return True
+        self._autosave_timer.stop()
+        conteudo = self.editor.text()
+        if conteudo == self._versao_atual.conteudo:
+            return True
+        self._salvando = True
+        try:
+            M.salvar_conteudo_versao(self.conn, self._versao_atual.id, conteudo)
+        except Exception as erro:
+            QMessageBox.warning(
+                self, "Falha ao salvar",
+                f"Não foi possível salvar a versão. O conteúdo permanece no editor.\n\n{erro}",
+            )
+            return False
+        finally:
+            self._salvando = False
+        self._versao_atual.conteudo = conteudo
         num = self._versao_atual.numero
-        pos = self.editor.getCursorPosition()
-        scroll_h = self.editor.horizontalScrollBar().value()
-        scroll_v = self.editor.verticalScrollBar().value()
-        self._recarregar_versoes()
-        self.editor.setCursorPosition(*pos)
-        self.editor.horizontalScrollBar().setValue(scroll_h)
-        self.editor.verticalScrollBar().setValue(scroll_v)
+        for idx in range(self.combo_versoes.count()):
+            versao = self.combo_versoes.itemData(idx)
+            if versao.id == self._versao_atual.id:
+                versao.conteudo = conteudo
+                self.combo_versoes.setItemData(idx, versao)
+                break
         self.label_info.setText(f"v{num}  |  Salvo automaticamente")
+        return True
 
     def _nova_versao(self):
         if not self._regra_id:
+            return
+        if not self.salvar_se_pendente():
             return
         versoes = M.listar_versoes(self.conn, self._regra_id)
         proximo_numero = (versoes[0].numero + 1) if versoes else 1
@@ -605,13 +666,23 @@ class EditorPanel(QWidget):
         tipo_sugerido = sugerir_tipo_para_regra(self.conn, self._regra_id, conteudo_ref)
         dlg = DialogVersao(self, tipo_sugerido=tipo_sugerido, numero_versao=proximo_numero)
         if dlg.exec():
-            M.criar_versao(self.conn, self._regra_id, "", dlg.notas, dlg.tipo)
+            try:
+                M.criar_versao(self.conn, self._regra_id, "", dlg.notas, dlg.tipo)
+            except Exception as erro:
+                mostrar_erro(self, "Versão não criada", erro)
+                return
             self._recarregar_versoes()
 
     def _marcar_atual(self):
         if not self._versao_atual:
             return
-        M.definir_versao_atual(self.conn, self._regra_id, self._versao_atual.id)
+        if not self.salvar_se_pendente():
+            return
+        try:
+            M.definir_versao_atual(self.conn, self._regra_id, self._versao_atual.id)
+        except Exception as erro:
+            mostrar_erro(self, "Versão atual não alterada", erro)
+            return
         self._recarregar_versoes()
 
     def _exportar(self):
@@ -620,10 +691,10 @@ class EditorPanel(QWidget):
         regra = self.conn.execute(
             "SELECT numero, descricao FROM regras WHERE id = ?", (self._regra_id,)
         ).fetchone()
-        import re
-        def _sanitizar(t): return re.sub(r'[\\/:*?"<>|]', "", t).strip()
-        numero = regra["numero"] if regra else "regra"
-        desc = _sanitizar(regra["descricao"] or "") if regra else ""
+        if not self.salvar_se_pendente():
+            return
+        numero = sanitizar_nome(regra["numero"]) if regra else "regra"
+        desc = sanitizar_nome(regra["descricao"]) if regra and regra["descricao"] else ""
         base = f"{numero} - {desc}" if desc else numero
         nome_sugerido = f"{base}_v{self._versao_atual.numero}.lsp"
         path, _ = QFileDialog.getSaveFileName(
@@ -631,11 +702,16 @@ class EditorPanel(QWidget):
             "LSP (*.lsp);;Texto (*.txt)"
         )
         if path:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(self._versao_atual.conteudo)
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(self._versao_atual.conteudo)
+            except OSError as erro:
+                mostrar_erro(self, "Regra não exportada", erro)
 
     def _excluir_versao(self):
         if not self._versao_atual:
+            return
+        if not self.salvar_se_pendente():
             return
         versoes = M.listar_versoes(self.conn, self._regra_id)
         if len(versoes) <= 1:
@@ -648,37 +724,34 @@ class EditorPanel(QWidget):
         )
         if resp != QMessageBox.StandardButton.Yes:
             return
-        era_atual = v.atual
-        M.deletar_versao(self.conn, v.id)
-        # Se era a atual, promove a versão mais recente restante
-        if era_atual:
-            restantes = M.listar_versoes(self.conn, self._regra_id)
-            if restantes:
-                M.definir_versao_atual(self.conn, self._regra_id, restantes[0].id)
+        try:
+            M.deletar_versao(self.conn, v.id)
+        except Exception as erro:
+            mostrar_erro(self, "Versão não excluída", erro)
+            return
         self._recarregar_versoes()
 
     def _abrir_historico(self):
         if not self._regra_id:
+            return
+        if not self.salvar_se_pendente():
             return
         label = self.label_regra.text()
         dlg = VersionHistory(self.conn, self._regra_id, regra_label=label, parent=self)
         dlg.versao_carregada.connect(self._carregar_versao_por_id)
         dlg.exec()
         # Recarrega combo caso versões tenham sido excluídas no histórico
-        self._recarregar_versoes()
+        self._recarregar_versoes(self._versao_atual.id if self._versao_atual else None)
 
     def _carregar_versao_por_id(self, versao_id: int):
-        versoes = M.listar_versoes(self.conn, self._regra_id)
-        for i, v in enumerate(versoes):
-            if v.id == versao_id:
-                self.combo_versoes.blockSignals(True)
-                self.combo_versoes.setCurrentIndex(i)
-                self.combo_versoes.blockSignals(False)
-                self._carregar_versao(i)
-                break
+        if not self.salvar_se_pendente():
+            return
+        self._recarregar_versoes(versao_id)
 
     def _abrir_diff(self):
         if not self._regra_id:
+            return
+        if not self.salvar_se_pendente():
             return
         versoes = M.listar_versoes(self.conn, self._regra_id)
         if len(versoes) < 2:

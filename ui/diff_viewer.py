@@ -19,6 +19,14 @@ COR_REMOVIDO = "#4B1818"
 COR_ADICAO   = "#1A3A1A"
 COR_MUDADO   = "#3A3000"
 COR_VAZIO    = "#2A2A2A"
+MARCADOR_QUEBRA_FINAL = "⏎ quebra de linha no fim do arquivo"
+
+
+def _linhas_diff(conteudo: str) -> list[str]:
+    linhas = conteudo.splitlines()
+    if conteudo.endswith(("\n", "\r")):
+        linhas.append(MARCADOR_QUEBRA_FINAL)
+    return linhas
 
 
 def _calcular_diff(linhas_a: list[str], linhas_b: list[str]):
@@ -44,12 +52,16 @@ def _calcular_diff(linhas_a: list[str], linhas_b: list[str]):
         elif opcode == "replace":
             bloco_a = linhas_a[i1:i2]
             bloco_b = linhas_b[j1:j2]
-            tamanho = max(len(bloco_a), len(bloco_b))
-            for k in range(tamanho):
-                la = bloco_a[k] if k < len(bloco_a) else None
-                lb = bloco_b[k] if k < len(bloco_b) else None
-                esq.append((la if la is not None else "", "mudado" if la is not None else "vazio"))
-                dir_.append((lb if lb is not None else "", "mudado" if lb is not None else "vazio"))
+            comuns = min(len(bloco_a), len(bloco_b))
+            for k in range(comuns):
+                esq.append((bloco_a[k], "mudado"))
+                dir_.append((bloco_b[k], "mudado"))
+            for linha in bloco_a[comuns:]:
+                esq.append((linha, "removido"))
+                dir_.append(("", "vazio"))
+            for linha in bloco_b[comuns:]:
+                esq.append(("", "vazio"))
+                dir_.append((linha, "adicao"))
     return esq, dir_
 
 
@@ -318,7 +330,7 @@ class DiffViewer(QDialog):
         self.label_a.setText(f"{v_a.numero} — {v_a.status}")
         self.label_b.setText(f"{v_b.numero} — {v_b.status}")
 
-        esq, dir_ = _calcular_diff(v_a.conteudo.splitlines(), v_b.conteudo.splitlines())
+        esq, dir_ = _calcular_diff(_linhas_diff(v_a.conteudo), _linhas_diff(v_b.conteudo))
         _preencher_editor(self.editor_a, esq)
         _preencher_editor(self.editor_b, dir_)
 

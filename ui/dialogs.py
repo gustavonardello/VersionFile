@@ -18,6 +18,11 @@ class DialogCliente(QDialog):
         botoes.accepted.connect(self.accept)
         botoes.rejected.connect(self.reject)
         layout.addRow(botoes)
+        self._botao_ok = botoes.button(QDialogButtonBox.StandardButton.Ok)
+        self.campo_nome.textChanged.connect(
+            lambda texto: self._botao_ok.setEnabled(bool(texto.strip()))
+        )
+        self._botao_ok.setEnabled(bool(nome_atual.strip()))
 
     @property
     def nome(self) -> str:

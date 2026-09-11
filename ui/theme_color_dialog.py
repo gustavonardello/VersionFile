@@ -5,20 +5,20 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt
 
-from core.highlighter import load_theme, save_active_theme, THEMES_PATH
-import json
+from core.highlighter import load_theme, salvar_cores_tema
 
 ELEMENTOS = [
     ("background",        "Fundo"),
     ("foreground",        "Texto padrão"),
     ("keyword",           "Palavra-chave"),
-    ("keyword2",          "Palavra-chave 2"),
+    ("function",          "Função"),
     ("type",              "Tipo"),
     ("number",            "Número"),
     ("string",            "String"),
     ("comment",           "Comentário"),
     ("operator",          "Operador"),
     ("identifier",        "Identificador"),
+    ("constant",          "Constante"),
     ("caret_line",        "Linha do cursor"),
     ("selection",         "Seleção"),
     ("margin_background", "Margem (fundo)"),
@@ -108,10 +108,12 @@ class ThemeColorDialog(QDialog):
             self._atualizar_botao(chave)
 
     def _salvar(self):
-        data = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
-        tema_ativo = data["active_theme"]
-        data["themes"][tema_ativo].update(self._cores)
-        THEMES_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        try:
+            salvar_cores_tema(self._cores)
+        except (OSError, ValueError) as erro:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Cores não salvas", str(erro))
+            return
         self.accept()
 
     def _aplicar_estilo(self):

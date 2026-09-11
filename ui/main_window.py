@@ -2,11 +2,13 @@ from PyQt6.QtWidgets import (
     QMainWindow, QSplitter, QDialog, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QProgressBar, QMessageBox,
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QIcon
 from ui.tree_panel import TreePanel
 from ui.editor_panel import EditorPanel
 from ui.export_dialog import ExportDialog
+from ui.import_dialog import ImportDialog
+from ui.theme_color_dialog import ThemeColorDialog
 from core.paths import base_path
 from core.updater import (
     verificar_atualizacao, baixar_e_instalar, InfoAtualizacao, ErroAtualizacao,
@@ -46,9 +48,10 @@ class _WorkerDownload(QThread):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, conn):
+    def __init__(self, conn, checar_atualizacao: bool = True):
         super().__init__()
         self.conn = conn
+        self._fechando = False
         self.setWindowTitle("VersionFile — Gerenciador de Regras LSP")
         self.resize(1200, 750)
 
@@ -78,7 +81,8 @@ class MainWindow(QMainWindow):
         self.tree_panel.regra_selecionada.connect(self.editor_panel.abrir_regra)
         self.tree_panel.regra_desmarcada.connect(self.editor_panel.desabilitar_acoes)
 
-        self._iniciar_checagem_atualizacao()
+        if checar_atualizacao:
+            self._iniciar_checagem_atualizacao()
 
     def _criar_menu(self):
         barra = self.menuBar()
@@ -90,6 +94,16 @@ class MainWindow(QMainWindow):
         act_exportar.triggered.connect(self._abrir_exportacao)
         menu_arquivo.addAction(act_exportar)
 
+        act_importar = QAction("Importar estrutura de pastas...", self)
+        act_importar.setShortcut("Ctrl+I")
+        act_importar.triggered.connect(self._abrir_importacao)
+        menu_arquivo.addAction(act_importar)
+
+        menu_config = barra.addMenu("Configurações")
+        act_cores = QAction("Personalizar cores do editor...", self)
+        act_cores.triggered.connect(self._personalizar_cores)
+        menu_config.addAction(act_cores)
+
         menu_arquivo.addSeparator()
 
         act_sair = QAction("Sair", self)
@@ -98,12 +112,32 @@ class MainWindow(QMainWindow):
         menu_arquivo.addAction(act_sair)
 
     def closeEvent(self, event):
-        self.editor_panel.salvar_se_pendente()
+        if not self.editor_panel.salvar_se_pendente():
+            event.ignore()
+            return
+        self._fechando = True
+        if any(
+            worker is not None and worker.isRunning()
+            for worker in (getattr(self, "_worker_update", None), getattr(self, "_worker_download", None))
+        ):
+            event.ignore()
+            QTimer.singleShot(100, self.close)
+            return
         super().closeEvent(event)
 
     def _abrir_exportacao(self):
         dlg = ExportDialog(self.conn, parent=self)
         dlg.exec()
+
+    def _abrir_importacao(self):
+        dlg = ImportDialog(self.conn, parent=self)
+        dlg.importacao_concluida.connect(self.tree_panel.carregar)
+        dlg.exec()
+
+    def _personalizar_cores(self):
+        dlg = ThemeColorDialog(self)
+        if dlg.exec():
+            self.editor_panel.recarregar_tema()
 
     # -- Atualização ----------------------------------------------------------
 
@@ -113,7 +147,7 @@ class MainWindow(QMainWindow):
         self._worker_update.start()
 
     def _tratar_resultado_atualizacao(self, info: InfoAtualizacao | None):
-        if info is None:
+        if info is None or self._fechando:
             return
         self._mostrar_dialogo_atualizacao(info)
 

@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont
 
 import database.models as M
+from ui.errors import mostrar_erro
 
 STATUS_CORES = {
     "Em desenvolvimento": "#569CD6",
@@ -213,12 +214,11 @@ class VersionHistory(QDialog):
         if resp != QMessageBox.StandardButton.Yes:
             return
 
-        era_atual = versao.atual
-        M.deletar_versao(self.conn, versao.id)
-        if era_atual:
-            restantes = M.listar_versoes(self.conn, self.regra_id)
-            if restantes:
-                M.definir_versao_atual(self.conn, self.regra_id, restantes[0].id)
+        try:
+            M.deletar_versao(self.conn, versao.id)
+        except Exception as erro:
+            mostrar_erro(self, "Versão não excluída", erro)
+            return
 
         self._carregar()
 
