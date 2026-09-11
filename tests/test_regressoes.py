@@ -446,7 +446,9 @@ class ArquivosEDialogos(unittest.TestCase):
 
     def test_exportacao_colisao_nao_sobrescreve(self):
         with tempfile.TemporaryDirectory() as temp:
-            raiz = Path(temp)
+            # O runner do GitHub pode devolver o diretório temporário com o
+            # alias 8.3 do Windows; o exportador retorna o caminho canônico.
+            raiz = Path(temp).resolve()
             a = exportar_arquivo(raiz, ["..", "X:/Y"], "Titulo / Antes.lsp", "primeiro")
             b = exportar_arquivo(raiz, ["..", "X:/Y"], "Titulo / Antes.lsp", "segundo")
             self.assertTrue(a.is_relative_to(raiz))

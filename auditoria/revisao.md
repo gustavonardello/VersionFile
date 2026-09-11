@@ -34,7 +34,7 @@ O banco `versionfile.db` do projeto foi aberto somente para leitura de estrutura
 
 Os INSERTs passaram a recuperar o registro por `lastrowid` em vez de `RETURNING`. Trata-se de um ajuste das operações de persistência; **não era a causa da mensagem informada**. O cadastro original de um nome novo funcionou no Python/SQLite instalado.
 
-**Pendências concluídas na versão 1.2.0**
+**Pendências concluídas na versão 1.2.1**
 
 Os itens que permaneceram abertos na primeira etapa também foram corrigidos e cobertos por testes quando automatizáveis.
 
@@ -64,4 +64,4 @@ Os itens que permaneceram abertos na primeira etapa também foram corrigidos e c
 
 A leitura cobre o código-fonte descrito, mas os testes exercitam cenários selecionados; não constituem cobertura de todos os ramos, teste de carga ou garantia de ausência de defeitos. Instalação, desinstalação e atualização real dependem do pipeline e de um ambiente isolado; por isso os scripts destrutivos não foram executados contra os dados do usuário. O snapshot usa hard link quando disponível e cópia exclusiva como fallback.
 
-As correções compõem a versão 1.2.0. O executável instalado recebe as mudanças depois que o pipeline concluir e a release for publicada. Nenhum banco do usuário foi modificado durante a revisão.
+As correções compõem a versão 1.2.1. O executável instalado recebe as mudanças depois que o pipeline concluir e a release for publicada. Nenhum banco do usuário foi modificado durante a revisão.

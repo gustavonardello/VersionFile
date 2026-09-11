@@ -44,8 +44,9 @@ auditoria/       # relatório e capturas da revisão técnica
 - Workers que acessam SQLite abrem uma conexão própria na thread e a fecham ao terminar.
 - `load_theme()` valida a estrutura e usa uma paleta interna segura; ao salvar sobre JSON inválido, preserva uma cópia `themes.invalid-*.json`.
 - Exportações em lote usam `core/exporter.py`, normalizam cada componente do caminho e não sobrescrevem arquivos.
+- Testes de caminhos no Windows devem comparar caminhos canônicos (`Path.resolve()`), pois runners podem fornecer aliases 8.3 para diretórios temporários.
 - O atualizador só oferece releases com instalador e arquivo `.sha256`, baixa para pasta temporária exclusiva e valida o digest antes de executar.
-- A tag de release deve coincidir com `core/version.py`; o workflow testa, gera instalador+checksum e cria release como rascunho quando ela ainda não existe.
+- A tag de release deve coincidir com `core/version.py`; o workflow usa `checkout@v5`/`setup-python@v6`, testa, gera instalador+checksum e cria release como rascunho quando ela ainda não existe.
 
 ## Code conventions
 - Arquivos e módulos em `snake_case.py`; classes em `PascalCase`; sem barrel files nem aliases de import.
