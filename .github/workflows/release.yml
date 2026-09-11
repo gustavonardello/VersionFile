@@ -94,7 +94,7 @@ jobs:
       # Disponível em toda execução, inclusive nos disparos manuais: permite
       # baixar e testar o instalador sem publicar nada.
       - name: Guardar o instalador como artefato
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VersionFile-Setup
           path: |
