@@ -3,7 +3,7 @@
 > Documento de referência para pessoas e assistentes que iniciarem uma nova sessão de trabalho neste repositório.
 >
 > Última leitura integral do código: 12/09/2026
-> Versão declarada no código: `1.2.4`
+> Versão declarada no código: `1.2.5`
 
 ## 1. Resumo executivo
 
@@ -549,7 +549,7 @@ O spec inclui temas, ícone e logo. Não inclui banco nem configurações mutáv
 Compilação manual:
 
 ```powershell
-ISCC installer\VersionFile.iss /DAppVersion=1.2.4
+ISCC installer\VersionFile.iss /DAppVersion=1.2.5
 ```
 
 ### CI/CD
@@ -718,7 +718,7 @@ Depois de mudanças em lógica, banco ou UI, executar a suíte de regressão. Pa
 
 No momento em que este documento foi criado:
 
-- o código declara a versão `1.2.4`;
+- o código declara a versão `1.2.5`;
 - a suíte desta sessão passou antes da validação final com 51 testes e passou a conter 52 após adicionar o cenário de migração legada;
 - a validação visual retornou `OK`;
 - os ajustes em andamento incluem a barra visual da árvore, rótulos dinâmicos e a porta como item diretamente editável dos Webservices;

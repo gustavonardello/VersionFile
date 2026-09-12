@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import patch, Mock
 
 from PyQt6.QtWidgets import QApplication, QDialogButtonBox, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEventLoop, QTimer
 from PyQt6.QtTest import QTest
 
 import database.db as DB
@@ -40,6 +40,7 @@ from ui.main_window import MainWindow
 
 
 APP = QApplication.instance() or QApplication([])
+APP.setQuitOnLastWindowClosed(False)
 
 
 class BancoTemporario(unittest.TestCase):
@@ -179,12 +180,20 @@ class BancoTemporario(unittest.TestCase):
         arquivo.write_text("conteúdo", encoding="utf-8")
         clientes = [ItemCliente("Importado", [ItemProjeto("P", "Projeto", [ArquivoRegra(arquivo, "800")])])]
         worker = _WorkerImport(str(self.caminho), clientes, "Notas")
+        self.addCleanup(lambda: worker.wait(30000))
         resultados, erros = [], []
-        worker.concluido.connect(resultados.append)
-        worker.erro.connect(erros.append)
+        loop = QEventLoop()
+        timeout = QTimer()
+        timeout.setSingleShot(True)
+        timeout.timeout.connect(loop.quit)
+        worker.concluido.connect(lambda resultado: (resultados.append(resultado), loop.quit()))
+        worker.erro.connect(lambda erro: (erros.append(erro), loop.quit()))
         worker.start()
-        self.assertTrue(worker.wait(5000))
-        APP.processEvents()
+        timeout.start(15000)
+        loop.exec()
+        self.assertTrue(worker.wait(15000))
+        timeout.stop()
+        self.assertTrue(resultados or erros, "O worker não concluiu antes do timeout")
         self.assertEqual(erros, [])
         self.assertEqual(resultados[0]["regras"], 1)
         self.assertEqual(importar_para_banco(self.conn, clientes)["pulados"], 1)

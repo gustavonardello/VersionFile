@@ -1,7 +1,7 @@
 ; VersionFile — Script do Inno Setup
 ;
 ; Compilar com:
-;   ISCC installer\VersionFile.iss /DAppVersion=1.2.4
+;   ISCC installer\VersionFile.iss /DAppVersion=1.2.5
 ;
 ; IMPORTANTE: Este instalador NUNCA encosta em {localappdata}\VersionFile,
 ; que é a pasta de DADOS do usuário (banco de regras, configs). A instalação
