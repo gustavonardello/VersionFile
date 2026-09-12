@@ -31,7 +31,7 @@ from core.text_utils import normalizar_busca
 from ui.diff_viewer import _calcular_diff, _linhas_diff
 import core.highlighter as highlighter
 import core.updater as updater
-from ui.dialogs import DialogCliente
+from ui.dialogs import DialogCliente, DialogProjeto
 from ui.editor_panel import EditorPanel
 from ui.tree_panel import TreePanel
 from ui.export_dialog import ExportDialog
@@ -124,8 +124,45 @@ class BancoTemporario(unittest.TestCase):
     def test_excluir_cliente_cascata(self):
         c, _, _, _ = self.hierarquia()
         M.deletar_cliente(self.conn, c.id)
-        for tabela in ("clientes", "projetos", "regras", "versoes"):
+        for tabela in ("clientes", "projetos", "portas", "regras", "versoes"):
             self.assertEqual(self.conn.execute(f"SELECT COUNT(*) FROM {tabela}").fetchone()[0], 0)
+
+    def test_webservice_usa_porta_antes_da_regra(self):
+        cliente = M.criar_cliente(self.conn, "Cliente")
+        projeto = M.criar_projeto(self.conn, cliente.id, "Integração", "Webservice")
+        with self.assertRaisesRegex(ValueError, "porta"):
+            M.criar_regra(self.conn, projeto.id, "Autenticar")
+
+        porta, regra = M.criar_porta_com_regra(self.conn, projeto.id, "8080")
+
+        self.assertEqual(M.listar_portas(self.conn, projeto.id)[0].numero, "8080")
+        self.assertEqual(M.listar_regras_porta(self.conn, porta.id)[0].id, regra.id)
+        with self.assertRaises(sqlite3.IntegrityError):
+            M.criar_regra(self.conn, projeto.id, "Outra", porta_id=porta.id)
+        M.deletar_porta(self.conn, porta.id)
+        self.assertEqual(M.listar_regras(self.conn, projeto.id), [])
+
+    def test_trocar_tipo_webservice_preserva_regras(self):
+        cliente = M.criar_cliente(self.conn, "Cliente")
+        projeto = M.criar_projeto(self.conn, cliente.id, "Projeto", "Projeto")
+        regra = M.criar_regra(self.conn, projeto.id, "800")
+        M.criar_versao(self.conn, regra.id, "conteúdo")
+        outra_regra = M.criar_regra(self.conn, projeto.id, "801")
+        M.criar_versao(self.conn, outra_regra.id, "outro conteúdo")
+
+        M.atualizar_projeto(self.conn, projeto.id, "Serviço", "Webservice")
+        portas = M.listar_portas(self.conn, projeto.id)
+        self.assertEqual([p.numero for p in portas], ["Sem porta", "Sem porta - 801"])
+        self.assertEqual(
+            {M.regra_da_porta(self.conn, porta.id).id for porta in portas},
+            {regra.id, outra_regra.id},
+        )
+
+        M.atualizar_projeto(self.conn, projeto.id, "Projeto", "Projeto")
+        self.assertEqual(M.listar_portas(self.conn, projeto.id), [])
+        preservadas = M.listar_regras(self.conn, projeto.id)
+        self.assertEqual({r.id for r in preservadas}, {regra.id, outra_regra.id})
+        self.assertTrue(all(r.porta_id is None for r in preservadas))
 
     def test_importacao_falha_nao_deixa_regras_vazias(self):
         arquivo = self.raiz / "800.lsp"
@@ -206,6 +243,44 @@ class BancoTemporario(unittest.TestCase):
                     DB._migrar(self.conn)
         self.assertEqual(self.conn.execute("SELECT sql FROM sqlite_master WHERE name='projetos'").fetchone()[0], schema)
         self.assertEqual(self.conn.execute("PRAGMA foreign_keys").fetchone()[0], 1)
+
+    def test_migracao_cria_porta_para_webservice_legado(self):
+        caminho = self.raiz / "legado.db"
+        with closing(sqlite3.connect(caminho)) as legado:
+            legado.executescript("""
+                CREATE TABLE clientes (
+                    id INTEGER PRIMARY KEY, nome TEXT NOT NULL UNIQUE, criado_em TEXT NOT NULL
+                );
+                CREATE TABLE projetos (
+                    id INTEGER PRIMARY KEY, cliente_id INTEGER NOT NULL REFERENCES clientes(id),
+                    nome TEXT NOT NULL, tipo TEXT NOT NULL, descricao TEXT, criado_em TEXT NOT NULL
+                );
+                CREATE TABLE regras (
+                    id INTEGER PRIMARY KEY, projeto_id INTEGER NOT NULL REFERENCES projetos(id),
+                    numero TEXT NOT NULL, descricao TEXT, criado_em TEXT NOT NULL
+                );
+                CREATE TABLE versoes (
+                    id INTEGER PRIMARY KEY, regra_id INTEGER NOT NULL REFERENCES regras(id),
+                    numero INTEGER NOT NULL, conteudo TEXT NOT NULL, status TEXT NOT NULL,
+                    notas TEXT, atual INTEGER NOT NULL, criado_em TEXT NOT NULL, tipo TEXT NOT NULL
+                );
+                INSERT INTO clientes VALUES (1, 'Cliente', '2026-01-01');
+                INSERT INTO projetos VALUES (1, 1, 'API', 'Webservice', NULL, '2026-01-01');
+                INSERT INTO regras VALUES (1, 1, 'Consultar', NULL, '2026-01-01');
+                INSERT INTO versoes VALUES (
+                    1, 1, 1, 'conteúdo', 'Em desenvolvimento', NULL, 1,
+                    '2026-01-01', 'Criação'
+                );
+            """)
+
+        with patch.object(DB, "DB_PATH", caminho):
+            DB.initialize_db()
+            with closing(DB.get_connection()) as migrado:
+                porta = M.listar_portas(migrado, 1)[0]
+                regra = M.listar_regras_porta(migrado, porta.id)[0]
+                self.assertEqual(porta.numero, "Sem porta")
+                self.assertEqual(regra.numero, "Consultar")
+                self.assertEqual(M.listar_versoes(migrado, regra.id)[0].conteudo, "conteúdo")
 
     def test_snapshot_inclui_wal_e_nao_sobrescreve(self):
         self.conn.execute("PRAGMA journal_mode = WAL")
@@ -372,6 +447,43 @@ class BancoTemporario(unittest.TestCase):
             regra = painel.tree.topLevelItem(0).child(0).child(0)
             self.assertFalse(regra.isHidden(), termo)
 
+    def test_arvore_webservice_e_barra_de_acoes(self):
+        cliente = M.criar_cliente(self.conn, "Cliente")
+        projeto = M.criar_projeto(self.conn, cliente.id, "API", "Webservice")
+        porta = M.criar_porta(self.conn, projeto.id, "443")
+        regra = M.criar_regra(self.conn, projeto.id, "Consultar", porta_id=porta.id)
+        M.criar_versao(self.conn, regra.id)
+        painel = self.painel_arvore()
+
+        self.assertFalse(painel.btn_novo_cliente.isHidden())
+        self.assertTrue(painel.btn_adicionar_contexto.isHidden())
+        self.assertIn("border: 1px solid #FFFFFF", painel.check_conteudo.styleSheet())
+        self.assertIn("background-color: #FFFFFF", painel.check_conteudo.styleSheet())
+        self.assertEqual(painel.btn_editar_selecionado.text(), "Editar")
+        self.assertEqual(painel.btn_excluir_selecionado.text(), "Excluir")
+
+        item_cliente = painel.tree.topLevelItem(0)
+        item_projeto = item_cliente.child(0)
+        item_porta = item_projeto.child(0)
+        self.assertEqual(item_porta.text(0), "Porta 443")
+        self.assertEqual(item_porta.childCount(), 0)
+
+        painel.tree.setCurrentItem(item_cliente)
+        self.assertEqual(painel.btn_adicionar_contexto.text(), "+ Projeto")
+        painel.tree.setCurrentItem(item_projeto)
+        self.assertEqual(painel.btn_adicionar_contexto.text(), "+ Porta")
+        regra_selecionada = Mock()
+        painel.regra_selecionada.connect(regra_selecionada)
+        painel.tree.setCurrentItem(item_porta)
+        self.assertTrue(painel.btn_adicionar_contexto.isHidden())
+        self.assertFalse(painel.btn_editar_selecionado.isHidden())
+        self.assertFalse(painel.btn_excluir_selecionado.isHidden())
+        regra_selecionada.assert_called_with(regra.id)
+
+        editor = self.painel_editor()
+        editor.abrir_regra(regra.id)
+        self.assertEqual(editor.label_regra.text(), "Cliente / API / Porta 443")
+
     def test_exportacao_selecao_parcial(self):
         _, p, _, _ = self.hierarquia()
         M.criar_regra(self.conn, p.id, "801")
@@ -448,6 +560,26 @@ class ArquivosEDialogos(unittest.TestCase):
             self.assertFalse(dlg._botao_ok.isEnabled())
             dlg.campo_nome.setText("Novo")
             self.assertTrue(dlg._botao_ok.isEnabled())
+        finally:
+            dlg.deleteLater()
+
+    def test_labels_do_dialogo_de_projeto_acompanham_tipo(self):
+        dlg = DialogProjeto()
+        try:
+            esperados = {
+                "DID": "Código:",
+                "Projeto": "Nome:",
+                "Regra": "Código:",
+                "Webservice": "Serviço:",
+                "Relatório": "Modelo:",
+            }
+            for tipo, label in esperados.items():
+                with self.subTest(tipo=tipo):
+                    dlg.campo_tipo.setCurrentText(tipo)
+                    self.assertEqual(dlg._label_nome_row.text(), label)
+                    self.assertEqual(dlg.campo_descricao.isHidden(), tipo != "Regra")
+            dlg.campo_tipo.setCurrentText("Regra")
+            self.assertEqual(dlg._label_descricao_row.text(), "Nome:")
         finally:
             dlg.deleteLater()
 

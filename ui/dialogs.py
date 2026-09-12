@@ -52,7 +52,7 @@ class DialogProjeto(QDialog):
         layout.addRow("Tipo:", self.campo_tipo)
 
         self.campo_nome = QLineEdit(nome_atual)
-        self._label_nome_row = QLabel("Nome:")
+        self._label_nome_row = QLabel("Código:")
         layout.addRow(self._label_nome_row, self.campo_nome)
 
         self.campo_descricao = QLineEdit(descricao_atual)
@@ -84,7 +84,16 @@ class DialogProjeto(QDialog):
 
     def _atualizar_campos(self, tipo: str):
         self.campo_nome.setPlaceholderText(self._PLACEHOLDERS.get(tipo, ""))
+        labels = {
+            "DID": "Código:",
+            "Projeto": "Nome:",
+            "Regra": "Código:",
+            "Webservice": "Serviço:",
+            "Relatório": "Modelo:",
+        }
+        self._label_nome_row.setText(labels.get(tipo, "Nome:"))
         is_regra = (tipo == "Regra")
+        self._label_descricao_row.setText("Nome:")
         self._label_descricao_row.setVisible(is_regra)
         self.campo_descricao.setVisible(is_regra)
 
@@ -125,6 +134,32 @@ class DialogRegra(QDialog):
     @property
     def descricao(self) -> str:
         return self.campo_descricao.text().strip()
+
+
+class DialogPorta(QDialog):
+    def __init__(self, parent=None, numero_atual: str = ""):
+        super().__init__(parent)
+        self.setWindowTitle("Porta do Webservice")
+        self.setMinimumWidth(300)
+        layout = QFormLayout(self)
+        self.campo_numero = QLineEdit(numero_atual)
+        self.campo_numero.setPlaceholderText("ex: 8080")
+        layout.addRow("Porta:", self.campo_numero)
+        botoes = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        botoes.accepted.connect(self.accept)
+        botoes.rejected.connect(self.reject)
+        layout.addRow(botoes)
+        self._botao_ok = botoes.button(QDialogButtonBox.StandardButton.Ok)
+        self.campo_numero.textChanged.connect(
+            lambda texto: self._botao_ok.setEnabled(bool(texto.strip()))
+        )
+        self._botao_ok.setEnabled(bool(numero_atual.strip()))
+
+    @property
+    def numero(self) -> str:
+        return self.campo_numero.text().strip()
 
 
 # Estrutura fixa de seções e sub-seções de um Relatório

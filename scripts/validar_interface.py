@@ -74,6 +74,27 @@ def executar():
                 assert estado["etapa"] == 3
                 assert [c.nome for c in M.listar_clientes(janela.conn)] == ["Cliente exemplo", "Novo cliente"]
                 janela.grab().save(str(capturas / "03-cliente-cadastrado.png"))
+
+                cliente = M.listar_clientes(janela.conn)[0]
+                projeto = M.criar_projeto(janela.conn, cliente.id, "API exemplo", "Webservice")
+                porta = M.criar_porta(janela.conn, projeto.id, "443")
+                regra = M.criar_regra(
+                    janela.conn, projeto.id, "Consultar", porta_id=porta.id,
+                )
+                M.criar_versao(janela.conn, regra.id, "definir alfa resposta;")
+                janela.tree_panel.carregar(
+                    ids_novos_clientes={cliente.id},
+                    ids_novos_projetos={projeto.id},
+                    ids_novas_portas={porta.id},
+                )
+                janela.tree_panel._selecionar_item("projeto", projeto.id)
+                janela.tree_panel.check_conteudo.setChecked(True)
+                QApplication.processEvents()
+                janela.grab().save(str(capturas / "04-webservice-porta.png"))
+
+                janela.tree_panel._selecionar_item("porta", porta.id)
+                QApplication.processEvents()
+                janela.grab().save(str(capturas / "05-porta-selecionada.png"))
                 janela.close()
             except BaseException as erro:
                 estado["erro"] = erro
@@ -92,7 +113,7 @@ def executar():
                     raise estado["erro"]
                 if saida.code != 0:
                     raise RuntimeError(f"Validação encerrou com código {saida.code}")
-        print("OK: main.main(), duplicidade, correção do nome e cadastro persistido.")
+        print("OK: main.main(), cadastro, duplicidade, barra de ações e hierarquia de Webservice.")
         print(f"Capturas: {capturas}")
 
 

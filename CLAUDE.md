@@ -18,7 +18,10 @@ implementado em `core/highlighter.py` sobre a API do QScintilla — não é um s
 Banco de dados SQLite acessado via `sqlite3` puro — sem ORM. A conexão é criada em `main.py` e
 passada explicitamente via construtor para todos os widgets e funções de modelo.
 Camadas: `ui/` (widgets PyQt6), `core/` (lógica de negócio), `database/` (modelos + SQL raw).
-A hierarquia de dados é: Cliente → Projeto → Regra → Versão.
+A hierarquia comum é Cliente → Projeto → Regra → Versão. Na UI, Webservices
+usam Cliente → Serviço → Porta → Versão: a porta abre diretamente o editor.
+Internamente, cada porta possui exatamente uma regra oculta para reutilizar o
+mesmo mecanismo de conteúdo e versionamento.
 Build para distribuição feito com PyInstaller; `core/paths.py` separa `base_path()` (recursos)
 de `data_path()` (dados do usuário em `%LOCALAPPDATA%\VersionFile` no executável).
 
@@ -41,6 +44,7 @@ auditoria/       # relatório e capturas da revisão técnica
 - `config/ui_prefs.json` persiste preferências de UI (ex: `bg_mode`); gerado automaticamente via `data_path()`; não incluído no `.spec`.
 - Preferência de fundo do editor é carregada no `__init__` do `EditorPanel` e re-aplicada após `_setup_editor()` (que sempre inicia em modo escuro).
 - Toda mutação do banco usa savepoints por `database.models.transacao`; fluxos compostos devem permanecer atômicos.
+- Cada `Porta` de Webservice possui uma única regra interna; nunca exiba um nó Regra abaixo dela na árvore.
 - Workers que acessam SQLite abrem uma conexão própria na thread e a fecham ao terminar.
 - `load_theme()` valida a estrutura e usa uma paleta interna segura; ao salvar sobre JSON inválido, preserva uma cópia `themes.invalid-*.json`.
 - Exportações em lote usam `core/exporter.py`, normalizam cada componente do caminho e não sobrescrevem arquivos.

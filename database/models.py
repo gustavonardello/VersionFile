@@ -51,6 +51,15 @@ class Regra:
     numero: str
     descricao: str = ""
     criado_em: str = ""
+    porta_id: Optional[int] = None
+
+
+@dataclass
+class Porta:
+    id: Optional[int]
+    projeto_id: int
+    numero: str
+    criado_em: str = ""
 
 
 TIPOS_VERSAO = ["Criação", "Correção", "Melhoria", "Refatoração"]
@@ -127,10 +136,106 @@ def deletar_projeto(conn, projeto_id: int):
 
 @_atomica
 def atualizar_projeto(conn, projeto_id: int, novo_nome: str, tipo: str, descricao: str = ""):
+    anterior = conn.execute(
+        "SELECT tipo FROM projetos WHERE id = ?", (projeto_id,)
+    ).fetchone()
     conn.execute(
         "UPDATE projetos SET nome = ?, tipo = ?, descricao = ? WHERE id = ?",
         (novo_nome, tipo, descricao, projeto_id),
     )
+
+    if anterior and anterior["tipo"] != "Webservice" and tipo == "Webservice":
+        regras_diretas = conn.execute(
+            "SELECT id, numero FROM regras WHERE projeto_id = ? AND porta_id IS NULL ORDER BY id",
+            (projeto_id,),
+        ).fetchall()
+        for indice, regra in enumerate(regras_diretas):
+            base = "Sem porta" if indice == 0 else f"Sem porta - {regra['numero']}"
+            numero_porta = base
+            sufixo = 2
+            while conn.execute(
+                "SELECT 1 FROM portas WHERE projeto_id = ? AND numero = ?",
+                (projeto_id, numero_porta),
+            ).fetchone():
+                numero_porta = f"{base} ({sufixo})"
+                sufixo += 1
+            cur = conn.execute(
+                "INSERT INTO portas (projeto_id, numero) VALUES (?, ?)",
+                (projeto_id, numero_porta),
+            )
+            porta_id = cur.lastrowid
+            conn.execute(
+                "UPDATE regras SET porta_id = ? WHERE id = ?",
+                (porta_id, regra["id"]),
+            )
+    elif anterior and anterior["tipo"] == "Webservice" and tipo != "Webservice":
+        # Ao voltar para um tipo comum, as regras retornam diretamente ao
+        # projeto antes da remoção das portas, preservando todo o conteúdo.
+        conn.execute(
+            "UPDATE regras SET porta_id = NULL WHERE projeto_id = ?",
+            (projeto_id,),
+        )
+        conn.execute("DELETE FROM portas WHERE projeto_id = ?", (projeto_id,))
+
+
+# --- CRUD: Portas de Webservice ---
+
+def listar_portas(conn, projeto_id: int) -> list[Porta]:
+    rows = conn.execute(
+        "SELECT * FROM portas WHERE projeto_id = ? ORDER BY numero COLLATE NOCASE",
+        (projeto_id,),
+    ).fetchall()
+    return [Porta(**dict(r)) for r in rows]
+
+
+@_atomica
+def criar_porta(conn, projeto_id: int, numero: str) -> Porta:
+    numero = numero.strip()
+    if not numero:
+        raise ValueError("Informe a porta do Webservice.")
+    projeto = conn.execute(
+        "SELECT tipo FROM projetos WHERE id = ?", (projeto_id,)
+    ).fetchone()
+    if not projeto or projeto["tipo"] != "Webservice":
+        raise ValueError("Portas só podem ser criadas em projetos do tipo Webservice.")
+    cur = conn.execute(
+        "INSERT INTO portas (projeto_id, numero) VALUES (?, ?)",
+        (projeto_id, numero),
+    )
+    row = conn.execute("SELECT * FROM portas WHERE id = ?", (cur.lastrowid,)).fetchone()
+    return Porta(**dict(row))
+
+
+@_atomica
+def criar_porta_com_regra(conn, projeto_id: int, numero: str) -> tuple[Porta, Regra]:
+    """Cria a porta e seu conteúdo versionado interno em uma única operação."""
+    porta = criar_porta(conn, projeto_id, numero)
+    regra = criar_regra(
+        conn, projeto_id, f"porta-{porta.id}", porta_id=porta.id,
+    )
+    criar_versao(conn, regra.id)
+    return porta, regra
+
+
+@_atomica
+def atualizar_porta(conn, porta_id: int, numero: str):
+    numero = numero.strip()
+    if not numero:
+        raise ValueError("Informe a porta do Webservice.")
+    conn.execute("UPDATE portas SET numero = ? WHERE id = ?", (numero, porta_id))
+
+
+@_atomica
+def deletar_porta(conn, porta_id: int):
+    conn.execute("DELETE FROM portas WHERE id = ?", (porta_id,))
+
+
+def regra_da_porta(conn, porta_id: int) -> Optional[Regra]:
+    row = conn.execute(
+        "SELECT * FROM regras WHERE porta_id = ? ORDER BY id LIMIT 1",
+        (porta_id,),
+    ).fetchone()
+    return Regra(**dict(row)) if row else None
 
 
 # --- CRUD: Regras ---
@@ -142,11 +247,35 @@ def listar_regras(conn, projeto_id: int) -> list[Regra]:
     return [Regra(**dict(r)) for r in rows]
 
 
+def listar_regras_porta(conn, porta_id: int) -> list[Regra]:
+    rows = conn.execute(
+        "SELECT * FROM regras WHERE porta_id = ? ORDER BY numero COLLATE NOCASE",
+        (porta_id,),
+    ).fetchall()
+    return [Regra(**dict(r)) for r in rows]
+
+
 @_atomica
-def criar_regra(conn, projeto_id: int, numero: str, descricao: str = "") -> Regra:
+def criar_regra(
+    conn, projeto_id: int, numero: str, descricao: str = "", porta_id: int | None = None,
+) -> Regra:
+    projeto = conn.execute(
+        "SELECT tipo FROM projetos WHERE id = ?", (projeto_id,)
+    ).fetchone()
+    if not projeto:
+        raise ValueError("Projeto não encontrado.")
+    if projeto["tipo"] == "Webservice":
+        porta = conn.execute(
+            "SELECT 1 FROM portas WHERE id = ? AND projeto_id = ?",
+            (porta_id, projeto_id),
+        ).fetchone()
+        if not porta:
+            raise ValueError("Selecione uma porta do Webservice para criar a regra.")
+    elif porta_id is not None:
+        raise ValueError("A porta informada não pertence a um Webservice.")
     cur = conn.execute(
-        "INSERT INTO regras (projeto_id, numero, descricao) VALUES (?, ?, ?)",
-        (projeto_id, numero, descricao),
+        "INSERT INTO regras (projeto_id, porta_id, numero, descricao) VALUES (?, ?, ?, ?)",
+        (projeto_id, porta_id, numero, descricao),
     )
     row = conn.execute("SELECT * FROM regras WHERE id = ?", (cur.lastrowid,)).fetchone()
     return Regra(**dict(row))

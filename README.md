@@ -5,9 +5,13 @@ Gerenciador de regras LSP com versionamento completo, desenvolvido para facilita
 ## Funcionalidades
 
 ### Organização hierárquica
-Estrutura em árvore: **Cliente → Projeto/DID → Regra → Versões**
+Estrutura em árvore: **Cliente → Projeto/DID → Regra → Versões**. Em projetos
+do tipo Webservice, a própria porta é o item editável: **Serviço → Porta → Versões**.
 
 Tipos de projeto suportados: `DID`, `Projeto`, `Regra`, `Webservice`, `Relatório`
+
+A barra de ações acima da árvore oferece cadastro de cliente e muda conforme a
+seleção para permitir criar, editar ou excluir projetos, portas e regras.
 
 Para projetos do tipo Relatório, a regra segue a estrutura de seções do gerador (Título, Cabeçalho, Detalhe, Total Geral, etc.).
 
@@ -97,7 +101,7 @@ Acesse a aba [Releases](../../releases) para baixar o `.exe` — não requer Pyt
 main.py              # Ponto de entrada: bootstrap, DB, QApplication
 database/
   db.py              # Inicialização e conexão SQLite
-  models.py          # Dataclasses (Cliente, Projeto, Regra, Versão) + CRUD raw SQL
+  models.py          # Dataclasses (Cliente, Projeto, Porta, Regra, Versão) + CRUD raw SQL
 core/
   highlighter.py     # Lexer LSP para QScintilla
   version_manager.py # Lógica de diff e detecção de tipo
@@ -105,11 +109,11 @@ core/
   paths.py           # base_path() / data_path() para compatibilidade com .exe
 ui/
   main_window.py     # Janela principal com TreePanel + EditorPanel
-  tree_panel.py      # Árvore hierárquica Cliente→Projeto→Regra
+  tree_panel.py      # Árvore Cliente→Projeto→Regra ou Serviço→Porta
   editor_panel.py    # Editor + painel lateral de versões
   diff_viewer.py     # Comparação lado a lado entre versões
   version_history.py # Histórico completo de versões em cards
-  dialogs.py         # Diálogos de criação/edição (Cliente, Projeto, Regra, Versão)
+  dialogs.py         # Diálogos de Cliente, Projeto, Porta, Regra e Versão
   export_dialog.py   # Exportação em lote
   import_dialog.py   # Importação de estrutura
 config/

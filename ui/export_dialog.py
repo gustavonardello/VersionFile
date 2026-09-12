@@ -130,11 +130,11 @@ class ExportDialog(QDialog):
                 node_p.setForeground(0, QColor("#DCDCAA"))
                 node_p.setData(0, Qt.ItemDataRole.UserRole, {"tipo": "projeto", "id": projeto.id})
 
-                for regra in M.listar_regras(self.conn, projeto.id):
+                def adicionar_regra(regra, pai, label=None, numero_export=None):
                     versoes = M.listar_versoes(self.conn, regra.id)
                     desc = f" — {regra.descricao}" if regra.descricao else ""
                     node_r = QTreeWidgetItem([
-                        f"Regra {regra.numero}{desc}",
+                        label or f"Regra {regra.numero}{desc}",
                         str(len(versoes)),
                     ])
                     node_r.setCheckState(0, Qt.CheckState.Unchecked)
@@ -142,12 +142,25 @@ class ExportDialog(QDialog):
                     node_r.setData(0, Qt.ItemDataRole.UserRole, {
                         "tipo": "regra",
                         "id": regra.id,
-                        "numero": regra.numero,
+                        "numero": numero_export or regra.numero,
                         "descricao": regra.descricao or "",
                         "cliente": cliente.nome,
                         "projeto": projeto.nome,
                     })
-                    node_p.addChild(node_r)
+                    pai.addChild(node_r)
+
+                if projeto.tipo == "Webservice":
+                    for porta in M.listar_portas(self.conn, projeto.id):
+                        regra = M.regra_da_porta(self.conn, porta.id)
+                        if regra:
+                            adicionar_regra(
+                                regra, node_p,
+                                label=f"Porta {porta.numero}",
+                                numero_export=porta.numero,
+                            )
+                else:
+                    for regra in M.listar_regras(self.conn, projeto.id):
+                        adicionar_regra(regra, node_p)
 
                 node_c.addChild(node_p)
             self.tree.addTopLevelItem(node_c)
@@ -196,14 +209,16 @@ class ExportDialog(QDialog):
 
     def _regras_selecionadas(self) -> list[dict]:
         resultado = []
+
+        def coletar(item: QTreeWidgetItem):
+            dados = item.data(0, Qt.ItemDataRole.UserRole) or {}
+            if dados.get("tipo") == "regra" and item.checkState(0) == Qt.CheckState.Checked:
+                resultado.append(dados)
+            for indice in range(item.childCount()):
+                coletar(item.child(indice))
+
         for i in range(self.tree.topLevelItemCount()):
-            node_c = self.tree.topLevelItem(i)
-            for j in range(node_c.childCount()):
-                node_p = node_c.child(j)
-                for k in range(node_p.childCount()):
-                    node_r = node_p.child(k)
-                    if node_r.checkState(0) == Qt.CheckState.Checked:
-                        resultado.append(node_r.data(0, Qt.ItemDataRole.UserRole))
+            coletar(self.tree.topLevelItem(i))
         return resultado
 
     def _selecionar_todos(self):

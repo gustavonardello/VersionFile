@@ -487,18 +487,25 @@ class EditorPanel(QWidget):
             return
         self._regra_id = regra_id
         regra = self.conn.execute(
-            "SELECT r.numero, r.descricao, p.nome as proj, c.nome as cli "
+            "SELECT r.numero, r.descricao, p.nome as proj, p.tipo as proj_tipo, "
+            "       po.numero as porta, c.nome as cli "
             "FROM regras r "
             "JOIN projetos p ON p.id = r.projeto_id "
             "JOIN clientes c ON c.id = p.cliente_id "
+            "LEFT JOIN portas po ON po.id = r.porta_id "
             "WHERE r.id = ?", (regra_id,)
         ).fetchone()
 
         if regra:
             desc = f" — {regra['descricao']}" if regra["descricao"] else ""
-            self.label_regra.setText(
-                f"{regra['cli']} / {regra['proj']} / Regra {regra['numero']}{desc}"
-            )
+            if regra["proj_tipo"] == "Webservice" and regra["porta"]:
+                self.label_regra.setText(
+                    f"{regra['cli']} / {regra['proj']} / Porta {regra['porta']}"
+                )
+            else:
+                self.label_regra.setText(
+                    f"{regra['cli']} / {regra['proj']} / Regra {regra['numero']}{desc}"
+                )
 
         self._set_acoes_habilitadas(True)
         self._recarregar_versoes()
